@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 from pathlib import Path
+import threading
 
 
 class ThreadWriter(object):
@@ -20,7 +21,9 @@ class ThreadWriter(object):
         if not Path(out_dir).is_dir():
             raise ValueError(f"Invalid output directory: {out_dir}")
         self.output_file = f"{out_dir}{file_}"
-        self.out_file = open(self.output_file, "a")
+        # Updated: use a lock and line buffering to keep writes consistent and real-time.
+        self._lock = threading.Lock()
+        self.out_file = open(self.output_file, "a", buffering=1, encoding="utf-8")
 
     def write(self, data: str):
         """Write data to file
@@ -28,12 +31,19 @@ class ThreadWriter(object):
         Arguments:
             data: data to write to file
         """
-        self.out_file.write(f"{data}\n")
+        # Updated: lock + flush per write so output is persisted in real time.
+        with self._lock:
+            self.out_file.write(f"{data}\n")
+            self.out_file.flush()
 
     def flush(self):
         """Flush the file buffer"""
-        self.out_file.flush()
+        # Updated: lock around flush for thread safety.
+        with self._lock:
+            self.out_file.flush()
 
     def close(self):
         """Close the file handle"""
-        self.out_file.close()
+        # Updated: lock around close for thread safety.
+        with self._lock:
+            self.out_file.close()

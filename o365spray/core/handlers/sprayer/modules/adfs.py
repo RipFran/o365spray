@@ -17,6 +17,7 @@ class SprayModule_adfs(SprayerBase):
     def __init__(self, *args, **kwargs):
         """Initialize the parent base class"""
         super(SprayModule_adfs, self).__init__(*args, **kwargs)
+        # Updated: ADFS request logging is now centralized in BaseHandler.
 
     def _spray(self, domain: str, user: str, password: str):
         """Spray users via a managed ADFS server
@@ -31,8 +32,10 @@ class SprayModule_adfs(SprayerBase):
               crashing the run
         """
         try:
+
             # Grab external headers from config.py
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
 
             # Build email if not already built
             email = self.HELPER.check_email(user, domain)
@@ -66,26 +69,52 @@ class SprayModule_adfs(SprayerBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "spray",
+                    "target": email,
+                    "username": user,
+                    "password": password,
+                },
             )
+
             status = response.status_code
 
             if status == 302:
                 if self.writer:
                     self.valid_writer.write(tested)
                 self.VALID_CREDENTIALS.append(tested)
-                logging.info(
-                    f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}:{password}"
+                # Updated: richer CLI output for valid responses.
+                self._log_spray_result(
+                    "VALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=response.reason,
+                    detail="ADFS redirect (valid)",
                 )
                 # Remove valid user from being sprayed again
                 self.userlist.remove(user)
 
             else:
-                print(
-                    f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                    f"{email}:{password}{' '*10}",
-                    end="\r",
+                resp_len = len(response.content)
+                redirect_loc = response.headers.get('Location', 'N/A')
+                # Updated: richer CLI output for invalid responses with context.
+                detail = f"len={resp_len} redirect={redirect_loc}"
+                self._log_spray_result(
+                    "INVALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=response.reason,
+                    detail=detail,
                 )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass

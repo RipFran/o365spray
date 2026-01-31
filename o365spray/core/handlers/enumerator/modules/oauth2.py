@@ -34,7 +34,8 @@ class EnumerateModule_oauth2(EnumeratorBase):
         """
         try:
             # Update content type
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
             headers["Content-Type"] = "application/x-www-form-urlencoded"
 
             # Build email if not already built
@@ -78,13 +79,25 @@ class EnumerateModule_oauth2(EnumeratorBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "enum",
+                    "target": email,
+                    "username": user,
+                },
             )
 
             status = response.status_code
-            body = response.json()
-            if "error_codes" in body:
-                error_codes = [f"AADSTS{code}" for code in body["error_codes"]]
-            else:
+            # Updated: tolerate non-JSON responses for robust logging.
+            try:
+                body = response.json()
+                if "error_codes" in body:
+                    error_codes = [f"AADSTS{code}" for code in body["error_codes"]]
+                else:
+                    error_codes = None
+            except Exception:
+                body = {}
                 error_codes = None
 
             # Default to valid if 200 or 302
@@ -92,33 +105,55 @@ class EnumerateModule_oauth2(EnumeratorBase):
                 if self.writer:
                     self.valid_writer.write(email)
                 self.VALID_ACCOUNTS.append(email)
-                logging.info(f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}")
+                # Updated: richer CLI output for valid responses.
+                self._log_enum_result(
+                    "VALID",
+                    email,
+                    status=status,
+                    reason=response.reason,
+                    detail="OAuth2 accepted",
+                )
 
             elif error_codes:
                 # User not found error is an invalid user
                 if "AADSTS50034" in error_codes:
-                    print(
-                        f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                        f"{email}{' '*10}",
-                        end="\r",
+                    # Updated: richer CLI output for invalid responses.
+                    self._log_enum_result(
+                        "INVALID",
+                        email,
+                        status=status,
+                        reason=response.reason,
+                        detail="AADSTS50034 user not found",
                     )
                 # Otherwise, valid user
                 else:
                     if self.writer:
                         self.valid_writer.write(email)
                     self.VALID_ACCOUNTS.append(email)
-                    logging.info(
-                        f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}"
+                    # Updated: richer CLI output for valid responses.
+                    self._log_enum_result(
+                        "VALID",
+                        email,
+                        status=status,
+                        reason=response.reason,
+                        detail="OAuth2 indicates valid user",
                     )
 
             # Unknown response -> invalid user
             else:
-                print(
-                    f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                    f"{email}{' '*10}",
-                    end="\r",
+                # Updated: richer CLI output for invalid responses.
+                self._log_enum_result(
+                    "INVALID",
+                    email,
+                    status=status,
+                    reason=response.reason,
+                    detail="OAuth2 rejected or unknown response",
                 )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass

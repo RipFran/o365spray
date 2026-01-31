@@ -57,7 +57,8 @@ class EnumerateModule_office(EnumeratorBase):
             }
 
             # Grab default headers
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
 
             # Handle FireProx API URL
             if self.proxy_url:
@@ -79,6 +80,13 @@ class EnumerateModule_office(EnumeratorBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "enum",
+                    "target": email,
+                    "username": user,
+                },
             )
 
             status = response.status_code
@@ -101,7 +109,10 @@ class EnumerateModule_office(EnumeratorBase):
                 # Check if the requests are being throttled and shutdown
                 # if so
                 if is_request_throttled != 0 or if_exists_result == 2:
-                    logging.info(f"Requests are being throttled. Shutting down...")
+                    # Updated: log throttling with context.
+                    logging.info(
+                        f"Requests are being throttled. Shutting down... (module={self.module_tag})"
+                    )
                     self.exit = True
                     return self.shutdown()
 
@@ -114,8 +125,13 @@ class EnumerateModule_office(EnumeratorBase):
                     if self.writer:
                         self.valid_writer.write(email)
                     self.VALID_ACCOUNTS.append(email)
-                    logging.info(
-                        f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}"
+                    # Updated: richer CLI output for valid responses.
+                    self._log_enum_result(
+                        "VALID",
+                        email,
+                        status=status,
+                        reason=response.reason,
+                        detail=f"IfExistsResult={if_exists_result}",
                     )
 
                 # This will not be added to our list of valid users as we want to avoid
@@ -125,25 +141,39 @@ class EnumerateModule_office(EnumeratorBase):
                         if not self.found_idp:
                             self.found_idp = True
                         self.idp_writer.write(email)
-                    logging.info(
-                        f"[{text_colors.WARNING}DIFFIDP{text_colors.ENDC}] {email}"
+                    # Updated: richer CLI output for different IDP results.
+                    self._log_enum_result(
+                        "DIFFIDP",
+                        email,
+                        status=status,
+                        reason=response.reason,
+                        detail="Different identity provider",
                     )
-                    logging.debug(f"{email} -> Different Identity Provider")
 
                 else:
-                    print(
-                        f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                        f"{email}{' '*10}",
-                        end="\r",
+                    # Updated: richer CLI output for invalid responses.
+                    self._log_enum_result(
+                        "INVALID",
+                        email,
+                        status=status,
+                        reason=response.reason,
+                        detail=f"IfExistsResult={if_exists_result}",
                     )
 
             else:
-                print(
-                    f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                    f"{email}{' '*10}",
-                    end="\r",
+                # Updated: richer CLI output for invalid responses.
+                self._log_enum_result(
+                    "INVALID",
+                    email,
+                    status=status,
+                    reason=response.reason,
+                    detail="Office GetCredentialType rejected",
                 )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass

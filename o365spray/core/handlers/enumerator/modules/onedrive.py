@@ -63,7 +63,8 @@ class EnumerateModule_onedrive(EnumeratorBase):
             fmt_user = user.replace(".", "_")
 
             # Grab default headers
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
 
             # Handle FireProx API URL
             if self.proxy_url:
@@ -84,6 +85,13 @@ class EnumerateModule_onedrive(EnumeratorBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "enum",
+                    "target": user,
+                    "username": orig_user,
+                },
             )
 
             # It appears that valid browser User-Agents will return a 302 redirect
@@ -93,16 +101,31 @@ class EnumerateModule_onedrive(EnumeratorBase):
                 if self.writer:
                     self.valid_writer.write(user)
                 self.VALID_ACCOUNTS.append(user)
-                logging.info(f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {user}")
+                # Updated: richer CLI output for valid responses.
+                self._log_enum_result(
+                    "VALID",
+                    user,
+                    status=status,
+                    reason=response.reason,
+                    detail="OneDrive user indicates valid",
+                )
 
             # Since 404 responses are invalid and everything else is considered
             # 'unknown', we will just handle them all as 'invalid'
             else:  # elif status == 404:
-                print(
-                    f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] " f"{user}{' '*10}",
-                    end="\r",
+                # Updated: richer CLI output for invalid responses.
+                self._log_enum_result(
+                    "INVALID",
+                    user,
+                    status=status,
+                    reason=response.reason,
+                    detail="OneDrive user not found",
                 )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{orig_user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass

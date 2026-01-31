@@ -27,6 +27,7 @@ class BaseHandler(object):
     def __init__(
         self,
         useragents: List[str] = None,
+        request_logger: object = None,
         *args,
         **kwargs,
     ):
@@ -41,6 +42,17 @@ class BaseHandler(object):
             useragents: list of user agents
         """
         self.useragents = useragents
+        # Updated: attach optional per-request logger for HTTP audit trails.
+        self.request_logger = request_logger
+        # Updated: cache a consistent module tag for logging context.
+        self.module_tag = self._derive_module_tag()
+
+    def _derive_module_tag(self) -> str:
+        # Updated: derive a short module identifier for logging and filenames.
+        name = self.__class__.__name__
+        if "_" in name:
+            return name.split("_", 1)[1].lower()
+        return name.lower()
 
     def _send_request(
         self,
@@ -56,6 +68,7 @@ class BaseHandler(object):
         allow_redirects: bool = False,
         sleep: int = 0,
         jitter: int = 0,
+        log_context: Dict[str, Any] = None,
     ) -> requests.Response:
         """Template for HTTP requests.
 
@@ -72,6 +85,7 @@ class BaseHandler(object):
             allow_redirects: boolean to determine to follow redirects
             sleep: throttle requests
             jitter: randomize throttle
+            log_context: metadata for per-request logging
 
         Returns:
             response from http request
@@ -95,15 +109,37 @@ class BaseHandler(object):
         if self.useragents:
             headers["User-Agent"] = Helper.get_random_element_from_list(self.useragents)
 
-        return requests.request(
-            method,
-            url,
-            auth=auth,
-            data=data,
-            json=json,
-            headers=headers,
-            proxies=proxies,
-            timeout=timeout,
-            allow_redirects=allow_redirects,
-            verify=verify,
-        )
+        # Updated: log request intent before sending to avoid missing data on failures.
+        request_entry = None
+        if self.request_logger:
+            request_entry = self.request_logger.start_request(
+                method=method,
+                url=url,
+                headers=headers,
+                data=data,
+                json_data=json,
+                context=log_context or {},
+            )
+
+        try:
+            response = requests.request(
+                method,
+                url,
+                auth=auth,
+                data=data,
+                json=json,
+                headers=headers,
+                proxies=proxies,
+                timeout=timeout,
+                allow_redirects=allow_redirects,
+                verify=verify,
+            )
+        except Exception as exc:
+            if self.request_logger and request_entry:
+                self.request_logger.log_error(request_entry, exc)
+            raise
+
+        if self.request_logger and request_entry:
+            self.request_logger.log_response(request_entry, response)
+
+        return response

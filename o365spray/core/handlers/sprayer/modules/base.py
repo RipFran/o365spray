@@ -20,6 +20,7 @@ from o365spray.core.utils import (
     Helper,
     ThreadWriter,
     text_colors,
+    RequestLogger,
 )
 
 
@@ -91,6 +92,10 @@ class SprayerBase(BaseHandler):
         self.loop = loop
         self.userlist = userlist
         self.domain = domain
+        # Updated: store output directory for downstream logging/reporting.
+        self.output_dir = output_dir
+        # Updated: store raw CLI log file path for shutdown summaries.
+        self.raw_log_file = f"{output_dir}{DefaultFiles.SPRAY_LOG_FILE}" if output_dir else None
         self.timeout = timeout
         self.proxies = proxy
         self.locked_limit = lock_threshold
@@ -111,6 +116,38 @@ class SprayerBase(BaseHandler):
         if self.writer:
             self.valid_writer = ThreadWriter(DefaultFiles.SPRAY_FILE, output_dir)
             self.tested_writer = ThreadWriter(DefaultFiles.SPRAY_TESTED, output_dir)
+            # Updated: initialize per-request logger for spraying.
+            self.request_logger = RequestLogger(output_dir, action="spray")
+
+    def _log_spray_result(
+        self,
+        result: str,
+        email: str,
+        password: str,
+        status: int = None,
+        reason: str = None,
+        detail: str = None,
+    ):
+        """Standardized CLI output for spray results."""
+        # Updated: unify CLI messages for more professional output.
+        # Updated: use warning color for notable non-valid outcomes.
+        if result == "VALID":
+            color = text_colors.OKGREEN
+        elif result in {"BLOCKED", "WARNING", "MFA", "LOCKED"}:
+            color = text_colors.WARNING
+        else:
+            color = text_colors.FAIL
+        parts = [f"[{color}{result}{text_colors.ENDC}] {email}:{password}"]
+        meta = [f"module={self.module_tag}"]
+        if status is not None:
+            meta.append(f"status={status}")
+        if reason:
+            meta.append(f"reason={reason}")
+        if detail:
+            meta.append(f"detail={detail}")
+        if meta:
+            parts.append(" | ".join(meta))
+        logging.info(" | ".join(parts))
 
     def shutdown(self, key: bool = False):
         """Custom method to handle exitting multi-threaded tasking.
@@ -123,6 +160,11 @@ class SprayerBase(BaseHandler):
         if self.writer:
             msg += f"\n[ * ] Writing valid credentials to: '{self.valid_writer.output_file}'"  # ignore
             msg += f"\n[ * ] All sprayed credentials can be found at: '{self.tested_writer.output_file}'\n"
+            # Updated: include raw CLI log file and per-request log directory.
+            if self.raw_log_file:
+                msg += f"\n[ * ] Raw CLI output can be found at: '{self.raw_log_file}'"
+            if self.request_logger:
+                msg += f"\n[ * ] HTTP request logs directory: '{self.request_logger.log_dir}'"
 
         print(Defaults.ERASE_LINE, end="\r")
         logging.info(msg)
@@ -147,6 +189,8 @@ class SprayerBase(BaseHandler):
         email: str,
         password: str,
         response: str,
+        status: int = None,
+        reason: str = None,
     ):
         """Helper function to parse X-AutoDiscovery-Error headers
         and/or response body for MS AADSTS errors.
@@ -180,27 +224,43 @@ class SprayerBase(BaseHandler):
                 if self.writer:
                     self.valid_writer.write(tested)
                 self.VALID_CREDENTIALS.append(tested)
-                logging.info(
-                    f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}:{password} {text_colors.OKGREEN}({msg}.){text_colors.ENDC}"
+                # Updated: richer CLI output for valid results with AADSTS context.
+                detail = f"{err} ({msg})"
+                self._log_spray_result(
+                    "VALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=reason,
+                    detail=detail,
                 )
 
             else:
                 err = Defaults.AADSTS_CODES[code][0]
                 msg = Defaults.AADSTS_CODES[code][1]
-                logging.info(
-                    f"[{text_colors.FAIL}{err}{text_colors.ENDC}] "
-                    f"{email}:{password} "
-                    f"({msg}.)"
+                # Updated: richer CLI output for invalid results with AADSTS context.
+                detail = f"{err} ({msg})"
+                self._log_spray_result(
+                    "INVALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=reason,
+                    detail=detail,
                 )
 
             # Remove errored user from being sprayed again
             self.userlist.remove(user)
 
         else:
-            print(
-                f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                f"{email}:{password}{' '*10}",
-                end="\r",
+            # Updated: surface invalid attempts in CLI with module metadata.
+            self._log_spray_result(
+                "INVALID",
+                email,
+                password,
+                status=status,
+                reason=reason,
+                detail="No AADSTS code detected",
             )
 
     async def run(

@@ -45,7 +45,8 @@ class EnumerateModule_rst(EnumeratorBase):
             time.sleep(0.250)
 
             # Update content type for SOAP XML
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
             headers["Content-Type"] = "application/soap+xml"
 
             # Handle FireProx API URL
@@ -99,7 +100,15 @@ class EnumerateModule_rst(EnumeratorBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "enum",
+                    "target": email,
+                    "username": user,
+                },
             )
+            status = response.status_code
             xml = BeautifulSoup(response.content, "xml")
 
             # If a valid security token is returned, the credentials were
@@ -108,17 +117,27 @@ class EnumerateModule_rst(EnumeratorBase):
                 if self.writer:
                     self.valid_writer.write(email)
                 self.VALID_ACCOUNTS.append(email)
-                logging.info(f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}")
+                # Updated: richer CLI output for valid responses.
+                self._log_enum_result(
+                    "VALID",
+                    email,
+                    status=status,
+                    reason=response.reason,
+                    detail="RST security token issued",
+                )
 
             # Attempt to parse an AADSTS error
             elif xml.find("psf:text"):
                 error = xml.find("psf:text").text
                 # User not found error is an invalid user
                 if "AADSTS50034" in error:
-                    print(
-                        f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                        f"{email}{' '*10}",
-                        end="\r",
+                    # Updated: richer CLI output for invalid responses.
+                    self._log_enum_result(
+                        "INVALID",
+                        email,
+                        status=status,
+                        reason=response.reason,
+                        detail="AADSTS50034 user not found",
                     )
 
                 # Otherwise, valid user
@@ -126,18 +145,30 @@ class EnumerateModule_rst(EnumeratorBase):
                     if self.writer:
                         self.valid_writer.write(email)
                     self.VALID_ACCOUNTS.append(email)
-                    logging.info(
-                        f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}"
+                    # Updated: richer CLI output for valid responses.
+                    self._log_enum_result(
+                        "VALID",
+                        email,
+                        status=status,
+                        reason=response.reason,
+                        detail="RST indicates valid user",
                     )
 
             # Unknown response -> invalid user
             else:
-                print(
-                    f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                    f"{email}:{password}{' '*10}",
-                    end="\r",
+                # Updated: richer CLI output for invalid responses.
+                self._log_enum_result(
+                    "INVALID",
+                    email,
+                    status=status,
+                    reason=response.reason,
+                    detail="RST rejected or unknown response",
                 )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass

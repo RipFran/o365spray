@@ -10,7 +10,10 @@ from pathlib import Path
 
 from o365spray.core.utils import (
     Defaults,
+    DefaultFiles,
     Helper,
+    add_file_logger,
+    remove_file_logger,
 )
 
 
@@ -32,7 +35,17 @@ def enumerate(args: argparse.Namespace, output_dir: str) -> object:
     output_directory = f"{output_dir}/enum/"
     Path(output_directory).mkdir(parents=True, exist_ok=True)
 
-    loop = asyncio.get_event_loop()
+    # Updated: explicitly create/set event loop for Python 3.10+ compatibility.
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    # Updated: attach per-enumeration raw CLI log file handler.
+    raw_log_handler = add_file_logger(
+        f"{output_directory}{DefaultFiles.ENUM_LOG_FILE}",
+        args.debug,
+    )
 
     # Support both username(s) and a username file being provided
     password = "Password1" if not args.password else args.password.split(",")[0]
@@ -104,5 +117,8 @@ def enumerate(args: argparse.Namespace, output_dir: str) -> object:
 
     except KeyboardInterrupt:
         pass
+    finally:
+        # Updated: remove file handler to keep logs scoped per action.
+        remove_file_logger(raw_log_handler)
 
     return enum

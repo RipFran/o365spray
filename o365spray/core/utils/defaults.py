@@ -15,6 +15,9 @@ class DefaultFiles:
 
     # Log and valid output files
     LOG_FILE = "raw.log"
+    # Updated: add per-action raw CLI output files with timestamps.
+    ENUM_LOG_FILE = f"enum_cli_output.{F_TIME}.log"
+    SPRAY_LOG_FILE = f"spray_cli_output.{F_TIME}.log"
     ENUM_FILE = f"enum_valid_accounts.{F_TIME}.txt"
     SPRAY_FILE = f"spray_valid_credentials.{F_TIME}.txt"
 
@@ -24,6 +27,8 @@ class DefaultFiles:
 
     # Misc. files
     ENUM_IDP = f"enum_found_idp_accounts.{F_TIME}.txt"
+    # Updated: dedicated HTTP request log directory.
+    HTTP_LOG_DIR = "http_logs"
 
 
 class Defaults:

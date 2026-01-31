@@ -10,7 +10,10 @@ from pathlib import Path
 
 from o365spray.core.utils import (
     Defaults,
+    DefaultFiles,
     Helper,
+    add_file_logger,
+    remove_file_logger,
 )
 
 
@@ -30,7 +33,17 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
     output_directory = f"{output_dir}/spray/"
     Path(output_directory).mkdir(parents=True, exist_ok=True)
 
-    loop = asyncio.get_event_loop()
+    # Updated: explicitly create/set event loop for Python 3.10+ compatibility.
+    try:
+        loop = asyncio.get_event_loop()
+    except RuntimeError:
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+    # Updated: attach per-spray raw CLI log file handler.
+    raw_log_handler = add_file_logger(
+        f"{output_directory}{DefaultFiles.SPRAY_LOG_FILE}",
+        args.debug,
+    )
 
     # Support both password(s) and a password file being provided
     passlist = []
@@ -246,3 +259,6 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
 
     except KeyboardInterrupt:
         pass
+    finally:
+        # Updated: remove file handler to keep logs scoped per action.
+        remove_file_logger(raw_log_handler)

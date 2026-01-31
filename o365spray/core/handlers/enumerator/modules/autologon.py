@@ -54,7 +54,8 @@ class EnumerateModule_autologon(EnumeratorBase):
             expires = expires.strftime("%Y-%m-%dT%H:%M:%S.001Z")
 
             # Grab default headers
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
 
             # Handle FireProx API URL
             if self.proxy_url:
@@ -108,6 +109,13 @@ class EnumerateModule_autologon(EnumeratorBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "enum",
+                    "target": email,
+                    "username": user,
+                },
             )
 
             status = response.status_code
@@ -118,15 +126,25 @@ class EnumerateModule_autologon(EnumeratorBase):
                 if self.writer:
                     self.valid_writer.write(email)
                 self.VALID_ACCOUNTS.append(email)
-                logging.info(f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}")
+                # Updated: richer CLI output for valid responses.
+                self._log_enum_result(
+                    "VALID",
+                    email,
+                    status=status,
+                    reason=response.reason,
+                    detail="Autologon auth accepted",
+                )
 
             else:
                 # User not found error is an invalid user
                 if "AADSTS50034" in body:
-                    print(
-                        f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                        f"{email}{' '*10}",
-                        end="\r",
+                    # Updated: richer CLI output for invalid responses.
+                    self._log_enum_result(
+                        "INVALID",
+                        email,
+                        status=status,
+                        reason=response.reason,
+                        detail="AADSTS50034 user not found",
                     )
 
                 # Otherwise, valid user
@@ -134,10 +152,19 @@ class EnumerateModule_autologon(EnumeratorBase):
                     if self.writer:
                         self.valid_writer.write(email)
                     self.VALID_ACCOUNTS.append(email)
-                    logging.info(
-                        f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}"
+                    # Updated: richer CLI output for valid responses.
+                    self._log_enum_result(
+                        "VALID",
+                        email,
+                        status=status,
+                        reason=response.reason,
+                        detail="Autologon indicates valid user",
                     )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass

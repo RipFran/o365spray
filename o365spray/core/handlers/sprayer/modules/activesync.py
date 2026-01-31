@@ -34,7 +34,8 @@ class SprayModule_activesync(SprayerBase):
         try:
             # Grab external headers from config.py and add special header
             # for ActiveSync
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
             headers["MS-ASProtocolVersion"] = "14.0"
 
             # Build email if not already built
@@ -68,6 +69,14 @@ class SprayModule_activesync(SprayerBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "spray",
+                    "target": email,
+                    "username": user,
+                    "password": password,
+                },
             )
             status = response.status_code
 
@@ -77,19 +86,33 @@ class SprayModule_activesync(SprayerBase):
                 if self.writer:
                     self.valid_writer.write(tested)
                 self.VALID_CREDENTIALS.append(tested)
-                logging.info(
-                    f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}:{password}"
+                # Updated: richer CLI output for valid responses.
+                self._log_spray_result(
+                    "VALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=response.reason,
+                    detail="ActiveSync auth accepted",
                 )
                 # Remove valid user from being sprayed again
                 self.userlist.remove(user)
 
             else:
-                print(
-                    f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                    f"{email}:{password}{' '*10}",
-                    end="\r",
+                # Updated: richer CLI output for invalid responses.
+                self._log_spray_result(
+                    "INVALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=response.reason,
+                    detail="ActiveSync auth rejected",
                 )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass

@@ -38,7 +38,8 @@ class EnumerateModule_autodiscover(EnumeratorBase):
         """
         try:
             # Add custom User-Agent to appear from outlook
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
             headers["User-Agent"] = "Microsoft Office/16.0 (Windows NT 10.0; Microsoft Outlook 16.0.12026; Pro)"  # fmt: skip
 
             # Build email if not already built
@@ -70,23 +71,45 @@ class EnumerateModule_autodiscover(EnumeratorBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "enum",
+                    "target": email,
+                    "username": user,
+                },
             )
+            status = response.status_code
 
             # If the 'Vary' header exists, assume valid
             if "Vary" in response.headers:
                 if self.writer:
                     self.valid_writer.write(email)
                 self.VALID_ACCOUNTS.append(email)
-                logging.info(f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}")
+                # Updated: richer CLI output for valid responses.
+                self._log_enum_result(
+                    "VALID",
+                    email,
+                    status=status,
+                    reason=response.reason,
+                    detail="Vary header present",
+                )
 
             # Otherwise, invalid
             else:
-                print(
-                    f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                    f"{email}{' '*10}",
-                    end="\r",
+                # Updated: richer CLI output for invalid responses.
+                self._log_enum_result(
+                    "INVALID",
+                    email,
+                    status=status,
+                    reason=response.reason,
+                    detail="Vary header missing",
                 )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass

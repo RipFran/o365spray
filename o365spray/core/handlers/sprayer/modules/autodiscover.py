@@ -48,7 +48,8 @@ class SprayModule_autodiscover(SprayerBase):
             time.sleep(0.250)
 
             # Grab default headers
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
 
             # Handle FireProx API URL
             if self.proxy_url:
@@ -71,6 +72,14 @@ class SprayModule_autodiscover(SprayerBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "spray",
+                    "target": email,
+                    "username": user,
+                    "password": password,
+                },
             )
             status = response.status_code
 
@@ -78,8 +87,14 @@ class SprayModule_autodiscover(SprayerBase):
                 if self.writer:
                     self.valid_writer.write(tested)
                 self.VALID_CREDENTIALS.append(tested)
-                logging.info(
-                    f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}:{password}"
+                # Updated: richer CLI output for valid responses.
+                self._log_spray_result(
+                    "VALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=response.reason,
+                    detail="Autodiscover auth accepted",
                 )
                 # Remove valid user from being sprayed again
                 self.userlist.remove(user)
@@ -90,9 +105,14 @@ class SprayModule_autodiscover(SprayerBase):
                 if self.writer:
                     self.valid_writer.write(tested)
                 self.VALID_CREDENTIALS.append(tested)
-                logging.info(
-                    f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}:{password}"
-                    " (Manually confirm [MFA, Locked, etc.])"
+                # Updated: richer CLI output for conditional results.
+                self._log_spray_result(
+                    "VALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=response.reason,
+                    detail="Manual confirmation required (MFA/locked/etc.)",
                 )
                 # Remove valid user from being sprayed again
                 self.userlist.remove(user)
@@ -104,9 +124,14 @@ class SprayModule_autodiscover(SprayerBase):
                     str_ in response.headers["X-AutoDiscovery-Error"]
                     for str_ in Defaults.BASICAUTH_ERRORS
                 ):
-                    logging.info(
-                        f"[{text_colors.FAIL}BLOCKED{text_colors.ENDC}] {email}:{password}"
-                        " (Basic Auth blocked for this user.)"
+                    # Updated: richer CLI output for basic auth block.
+                    self._log_spray_result(
+                        "BLOCKED",
+                        email,
+                        password,
+                        status=status,
+                        reason=response.reason,
+                        detail="Basic Auth blocked",
                     )
                     # Remove basic auth blocked user from being sprayed again
                     self.userlist.remove(user)
@@ -128,15 +153,25 @@ class SprayModule_autodiscover(SprayerBase):
                         email,
                         password,
                         response.headers["X-AutoDiscovery-Error"],
+                        status=status,
+                        reason=response.reason,
                     )
 
             else:
-                print(
-                    f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                    f"{email}:{password}{' '*10}",
-                    end="\r",
+                # Updated: richer CLI output for invalid responses.
+                self._log_spray_result(
+                    "INVALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=response.reason,
+                    detail="Autodiscover auth rejected",
                 )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass

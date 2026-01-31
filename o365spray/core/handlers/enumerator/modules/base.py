@@ -18,6 +18,8 @@ from o365spray.core.utils import (
     DefaultFiles,
     Helper,
     ThreadWriter,
+    RequestLogger,
+    text_colors,
 )
 
 
@@ -84,6 +86,10 @@ class EnumeratorBase(BaseHandler):
 
         self.loop = loop
         self.domain = domain
+        # Updated: store output directory for downstream logging/reporting.
+        self.output_dir = output_dir
+        # Updated: store raw CLI log file path for shutdown summaries.
+        self.raw_log_file = f"{output_dir}{DefaultFiles.ENUM_LOG_FILE}" if output_dir else None
         self.timeout = timeout
         self.proxies = proxy
         self.sleep = sleep
@@ -102,6 +108,33 @@ class EnumeratorBase(BaseHandler):
             self.idp_writer = ThreadWriter(DefaultFiles.ENUM_IDP, output_dir)
             self.valid_writer = ThreadWriter(DefaultFiles.ENUM_FILE, output_dir)
             self.tested_writer = ThreadWriter(DefaultFiles.ENUM_TESTED, output_dir)
+            # Updated: initialize per-request logger for enumeration.
+            self.request_logger = RequestLogger(output_dir, action="enum")
+
+    def _log_enum_result(
+        self,
+        result: str,
+        email: str,
+        status: int = None,
+        reason: str = None,
+        detail: str = None,
+    ):
+        """Standardized CLI output for enumeration results."""
+        # Updated: unify CLI messages for more professional output.
+        color = text_colors.OKGREEN if result == "VALID" else text_colors.FAIL
+        if result == "DIFFIDP":
+            color = text_colors.WARNING
+        parts = [f"[{color}{result}{text_colors.ENDC}] {email}"]
+        meta = [f"module={self.module_tag}"]
+        if status is not None:
+            meta.append(f"status={status}")
+        if reason:
+            meta.append(f"reason={reason}")
+        if detail:
+            meta.append(f"detail={detail}")
+        if meta:
+            parts.append(" | ".join(meta))
+        logging.info(" | ".join(parts))
 
     def shutdown(self, key: bool = False):
         """Custom method to handle exitting multi-threaded tasking.
@@ -116,6 +149,11 @@ class EnumeratorBase(BaseHandler):
             if self.found_idp:
                 msg += f"\n[ * ] Accounts in different Identity Providers can be found at: '{self.idp_writer.output_file}'"
             msg += f"\n[ * ] All enumerated accounts can be found at: '{self.tested_writer.output_file}'\n"
+            # Updated: include raw CLI log file and per-request log directory.
+            if self.raw_log_file:
+                msg += f"\n[ * ] Raw CLI output can be found at: '{self.raw_log_file}'"
+            if self.request_logger:
+                msg += f"\n[ * ] HTTP request logs directory: '{self.request_logger.log_dir}'"
 
         print(Defaults.ERASE_LINE, end="\r")
         logging.info(msg)

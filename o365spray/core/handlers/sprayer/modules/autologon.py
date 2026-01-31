@@ -48,7 +48,8 @@ class SprayModule_autologon(SprayerBase):
             time.sleep(0.250)
 
             # Grab default headers
-            headers = Defaults.HTTP_HEADERS
+            # Updated: copy headers to avoid cross-request mutation.
+            headers = Defaults.HTTP_HEADERS.copy()
 
             # Handle FireProx API URL
             if self.proxy_url:
@@ -107,6 +108,14 @@ class SprayModule_autologon(SprayerBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                # Updated: include request context for per-request logging.
+                log_context={
+                    "module": self.module_tag,
+                    "action": "spray",
+                    "target": email,
+                    "username": user,
+                    "password": password,
+                },
             )
             status = response.status_code
 
@@ -114,8 +123,14 @@ class SprayModule_autologon(SprayerBase):
                 if self.writer:
                     self.valid_writer.write(tested)
                 self.VALID_CREDENTIALS.append(tested)
-                logging.info(
-                    f"[{text_colors.OKGREEN}VALID{text_colors.ENDC}] {email}:{password}"
+                # Updated: richer CLI output for valid responses.
+                self._log_spray_result(
+                    "VALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=response.reason,
+                    detail="Autologon auth accepted",
                 )
                 # Remove valid user from being sprayed again
                 self.userlist.remove(user)
@@ -130,15 +145,25 @@ class SprayModule_autologon(SprayerBase):
                     email,
                     password,
                     error,
+                    status=status,
+                    reason=response.reason,
                 )
 
             else:
-                print(
-                    f"[{text_colors.FAIL}INVALID{text_colors.ENDC}] "
-                    f"{email}:{password}{' '*10}",
-                    end="\r",
+                # Updated: richer CLI output for invalid responses.
+                self._log_spray_result(
+                    "INVALID",
+                    email,
+                    password,
+                    status=status,
+                    reason=response.reason,
+                    detail="Autologon auth rejected",
                 )
 
         except Exception as e:
-            logging.debug(e)
+            # Updated: surface request failures with context.
+            logging.warning(
+                f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+            )
             pass
