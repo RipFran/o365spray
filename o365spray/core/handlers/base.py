@@ -69,6 +69,8 @@ class BaseHandler(object):
         sleep: int = 0,
         jitter: int = 0,
         log_context: Dict[str, Any] = None,
+        retries: int = 0,
+        retry_backoff: float = 0.5,
     ) -> requests.Response:
         """Template for HTTP requests.
 
@@ -86,6 +88,8 @@ class BaseHandler(object):
             sleep: throttle requests
             jitter: randomize throttle
             log_context: metadata for per-request logging
+            retries: number of retry attempts for transient network errors (0 disables)
+            retry_backoff: initial backoff in seconds between retries
 
         Returns:
             response from http request
@@ -109,37 +113,69 @@ class BaseHandler(object):
         if self.useragents:
             headers["User-Agent"] = Helper.get_random_element_from_list(self.useragents)
 
-        # Updated: log request intent before sending to avoid missing data on failures.
-        request_entry = None
-        if self.request_logger:
-            request_entry = self.request_logger.start_request(
-                method=method,
-                url=url,
-                headers=headers,
-                data=data,
-                json_data=json,
-                context=log_context or {},
-            )
+        # Updated: retry transient request failures to reduce lost attempts.
+        max_attempts = max(1, int(retries) + 1)
+        last_exc = None
+        for attempt in range(1, max_attempts + 1):
+            request_entry = None
+            if self.request_logger:
+                ctx = dict(log_context or {})
+                ctx["attempt"] = attempt
+                ctx["max_attempts"] = max_attempts
+                request_entry = self.request_logger.start_request(
+                    method=method,
+                    url=url,
+                    headers=headers,
+                    data=data,
+                    json_data=json,
+                    context=ctx,
+                )
 
-        try:
-            response = requests.request(
-                method,
-                url,
-                auth=auth,
-                data=data,
-                json=json,
-                headers=headers,
-                proxies=proxies,
-                timeout=timeout,
-                allow_redirects=allow_redirects,
-                verify=verify,
-            )
-        except Exception as exc:
+            try:
+                response = requests.request(
+                    method,
+                    url,
+                    auth=auth,
+                    data=data,
+                    json=json,
+                    headers=headers,
+                    proxies=proxies,
+                    timeout=timeout,
+                    allow_redirects=allow_redirects,
+                    verify=verify,
+                )
+            except Exception as exc:
+                last_exc = exc
+                if self.request_logger and request_entry:
+                    self.request_logger.log_error(request_entry, exc)
+
+                # Only retry known transient network failures.
+                is_transient = isinstance(
+                    exc,
+                    (
+                        requests.exceptions.ConnectionError,
+                        requests.exceptions.Timeout,
+                        requests.exceptions.ChunkedEncodingError,
+                        requests.exceptions.ProxyError,
+                    ),
+                )
+                if (not is_transient) or attempt >= max_attempts:
+                    raise
+
+                # Keep retry noise in debug; final failure is still logged by callers.
+                ctx = log_context or {}
+                logging.debug(
+                    f"Retrying request (attempt {attempt + 1}/{max_attempts}) "
+                    f"module={ctx.get('module') or self.module_tag} "
+                    f"target={ctx.get('target') or ctx.get('user') or 'unknown'} "
+                    f"error={type(exc).__name__}: {exc}"
+                )
+                time.sleep(float(retry_backoff) * (2 ** (attempt - 1)))
+                continue
+
             if self.request_logger and request_entry:
-                self.request_logger.log_error(request_entry, exc)
-            raise
+                self.request_logger.log_response(request_entry, response)
+            return response
 
-        if self.request_logger and request_entry:
-            self.request_logger.log_response(request_entry, response)
-
-        return response
+        # Updated: should never hit this due to raise/return in loop.
+        raise last_exc  # type: ignore[misc]

@@ -1,5 +1,13 @@
 # o365spray
 
+> **Fork Notice (Operational Enhancements)**  
+> This fork introduces operational hardening focused on auditability, reliability, and professional-grade output while preserving Microsoft authentication logic.  
+> - **Real-time output persistence:** all CLI output and result files are written and flushed continuously during execution.  
+> - **Per-action raw CLI logs:** dedicated timestamped files for enumeration and spraying runs.  
+> - **Per-request HTTP audit logs:** one file per request including target, timestamps, request/response, and errors.  
+> - **Richer CLI telemetry:** standardized, concise, and actionable status messages (module, HTTP status, reasons, and details).  
+> - **Request retry on transient failures:** one automatic retry for network disconnects/timeouts with backoff to reduce lost attempts.  
+
 o365spray is a username enumeration and password spraying tool aimed at Microsoft Office 365 (O365). This tool reimplements a collection of enumeration and spray techniques researched and identified by those mentioned in [Acknowledgments](#Acknowledgments).
 
 > For educational, authorized and/or research purposes only.

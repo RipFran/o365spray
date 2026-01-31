@@ -104,6 +104,9 @@ class SprayerBase(BaseHandler):
         self.jitter = jitter
         self.proxy_url = proxy_url
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
+        # Updated: enable a single retry for transient request failures (e.g. remote disconnects).
+        self.request_retries = 1
+        self.request_retry_backoff = 0.5
 
         # Internal exit handler
         self.exit = False
