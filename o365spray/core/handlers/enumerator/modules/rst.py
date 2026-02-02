@@ -91,6 +91,7 @@ class EnumerateModule_rst(EnumeratorBase):
 </S:Envelope>
 """
 
+            # Updated: include retry configuration for transient failures.
             response = self._send_request(
                 "post",
                 url,
@@ -100,6 +101,8 @@ class EnumerateModule_rst(EnumeratorBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                retries=self.request_retries,
+                retry_backoff=self.request_retry_backoff,
                 # Updated: include request context for per-request logging.
                 log_context={
                     "module": self.module_tag,

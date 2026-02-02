@@ -32,6 +32,9 @@ class SprayModule_activesync(SprayerBase):
               crashing the run
         """
         try:
+            # Updated: abort early if lockout threshold already reached.
+            if self._should_abort():
+                return
             # Grab external headers from config.py and add special header
             # for ActiveSync
             # Updated: copy headers to avoid cross-request mutation.
@@ -60,6 +63,7 @@ class SprayModule_activesync(SprayerBase):
                 url = "https://outlook.office365.com/Microsoft-Server-ActiveSync"
 
             auth = HTTPBasicAuth(email, password)
+            # Updated: include retry configuration for transient failures.
             response = self._send_request(
                 "options",
                 url,
@@ -80,6 +84,9 @@ class SprayModule_activesync(SprayerBase):
                     "password": password,
                 },
             )
+            # Updated: detect explicit lockout signals where available.
+            if self._detect_lockout_signal(response):
+                self._record_lockout(reason="AADSTS50053")
             status = response.status_code
 
             # Note: 403 responses appear to indicate valid authentication again...

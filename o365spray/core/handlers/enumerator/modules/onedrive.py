@@ -77,6 +77,7 @@ class EnumerateModule_onedrive(EnumeratorBase):
             else:
                 url = f"https://{tenant}-my.sharepoint.com/personal/{fmt_user}_{domain}/_layouts/15/onedrive.aspx"
 
+            # Updated: include retry configuration for transient failures.
             response = self._send_request(
                 "get",
                 url,
@@ -85,6 +86,8 @@ class EnumerateModule_onedrive(EnumeratorBase):
                 timeout=self.timeout,
                 sleep=self.sleep,
                 jitter=self.jitter,
+                retries=self.request_retries,
+                retry_backoff=self.request_retry_backoff,
                 # Updated: include request context for per-request logging.
                 log_context={
                     "module": self.module_tag,

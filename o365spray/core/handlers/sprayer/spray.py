@@ -113,6 +113,8 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
         jitter=args.jitter,
         proxy_url=args.proxy_url,
         useragents=args.useragents,
+        # Updated: pass retry configuration to spray modules.
+        request_retries=args.retries,
     )
 
     def spray_signal_handler(signal, frame):

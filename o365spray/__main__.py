@@ -145,6 +145,16 @@ def parse_args() -> argparse.Namespace:
             "spraying. Default: 10"
         ),
     )
+    # Updated: allow operators to configure transient retry attempts.
+    scan_args.add_argument(
+        "--retries",
+        type=int,
+        default=1,
+        help=(
+            "Number of retries for transient request errors during enumeration "
+            "and spraying. Default: 1"
+        ),
+    )
     scan_args.add_argument(
         "--poolsize",
         type=int,

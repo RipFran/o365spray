@@ -79,6 +79,8 @@ def enumerate(args: argparse.Namespace, output_dir: str) -> object:
         jitter=args.jitter,
         proxy_url=args.proxy_url,
         useragents=args.useragents,
+        # Updated: pass retry configuration to enumeration modules.
+        request_retries=args.retries,
     )
 
     def enum_signal_handler(signal, frame):

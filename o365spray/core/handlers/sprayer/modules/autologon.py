@@ -37,6 +37,9 @@ class SprayModule_autologon(SprayerBase):
               crashing the run
         """
         try:
+            # Updated: abort early if lockout threshold already reached.
+            if self._should_abort():
+                return
             # Build email if not already built
             email = self.HELPER.check_email(user, domain)
 
@@ -99,6 +102,7 @@ class SprayModule_autologon(SprayerBase):
 </s:Envelope>
 """
 
+            # Updated: include retry configuration for transient failures.
             response = self._send_request(
                 "post",
                 url,

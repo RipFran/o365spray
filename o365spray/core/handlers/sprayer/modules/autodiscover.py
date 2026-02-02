@@ -33,9 +33,9 @@ class SprayModule_autodiscover(SprayerBase):
               crashing the run
         """
         try:
-            # Check if we hit our locked account limit, and stop
-            if self.lockout >= self.locked_limit:
-                raise ValueError("Locked account limit reached.")
+            # Updated: abort early if lockout threshold already reached.
+            if self._should_abort():
+                return
 
             # Build email if not already built
             email = self.HELPER.check_email(user, domain)
@@ -63,6 +63,7 @@ class SprayModule_autodiscover(SprayerBase):
                 url = "https://autodiscover-s.outlook.com/autodiscover/autodiscover.xml"
 
             auth = HTTPBasicAuth(email, password)
+            # Updated: include retry configuration for transient failures.
             response = self._send_request(
                 "get",
                 url,

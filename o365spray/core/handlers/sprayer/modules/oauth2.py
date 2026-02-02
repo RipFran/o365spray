@@ -33,9 +33,9 @@ class SprayModule_oauth2(SprayerBase):
               crashing the run
         """
         try:
-            # Check if we hit our locked account limit, and stop
-            if self.lockout >= self.locked_limit:
-                raise ValueError("Locked account limit reached.")
+            # Updated: abort early if lockout threshold already reached.
+            if self._should_abort():
+                return
 
             # Grab prebuilt office headers
             # Updated: copy headers to avoid cross-request mutation.
@@ -76,6 +76,7 @@ class SprayModule_oauth2(SprayerBase):
             else:
                 url = "https://login.microsoftonline.com/common/oauth2/token"
 
+            # Updated: include retry configuration for transient failures.
             response = self._send_request(
                 "post",
                 url,

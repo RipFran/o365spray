@@ -4,6 +4,7 @@ import asyncio
 import concurrent.futures
 import concurrent.futures.thread
 import logging
+import threading
 import urllib3  # type: ignore
 from functools import partial
 from itertools import cycle
@@ -47,6 +48,8 @@ class SprayerBase(BaseHandler):
         sleep: int = 0,
         jitter: int = 0,
         proxy_url: str = None,
+        request_retries: int = 1,
+        request_retry_backoff: float = 0.5,
         *args,
         **kwargs,
     ):
@@ -74,6 +77,8 @@ class SprayerBase(BaseHandler):
             sleep: throttle http requests
             jitter: randomize throttle
             proxy_url: fireprox api url
+            request_retries: number of retries for transient request errors
+            request_retry_backoff: initial backoff in seconds for retries
 
         Raises:
             ValueError: if no output directory provided when output writing
@@ -104,15 +109,18 @@ class SprayerBase(BaseHandler):
         self.jitter = jitter
         self.proxy_url = proxy_url
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
-        # Updated: enable a single retry for transient request failures (e.g. remote disconnects).
-        self.request_retries = 1
-        self.request_retry_backoff = 0.5
+        # Updated: configure retries for transient request failures.
+        self.request_retries = max(0, int(request_retries))
+        self.request_retry_backoff = float(request_retry_backoff)
 
         # Internal exit handler
         self.exit = False
 
         # Global locked account counter
         self.lockout = 0
+        # Updated: ensure lockout tracking is thread-safe and logged once.
+        self._lockout_lock = threading.Lock()
+        self._lockout_reached = False
 
         # Initialize writers
         self.writer = writer
@@ -121,6 +129,45 @@ class SprayerBase(BaseHandler):
             self.tested_writer = ThreadWriter(DefaultFiles.SPRAY_TESTED, output_dir)
             # Updated: initialize per-request logger for spraying.
             self.request_logger = RequestLogger(output_dir, action="spray")
+
+    def _record_lockout(self, reason: str = None):
+        """Record a locked account event and enforce safe threshold."""
+        # Updated: centralize lockout counting and threshold enforcement.
+        with self._lockout_lock:
+            self.lockout += 1
+            reached = self.lockout >= self.locked_limit
+
+        if reached and not self._lockout_reached:
+            self._lockout_reached = True
+            self.exit = True
+            msg = (
+                f"Locked account threshold reached (count={self.lockout} "
+                f"limit={self.locked_limit})."
+            )
+            if reason:
+                msg += f" Reason: {reason}."
+            logging.error(msg)
+        return reached
+
+    def _detect_lockout_signal(self, response) -> bool:
+        """Detect explicit lockout signals from a response."""
+        # Updated: only treat explicit AADSTS50053 as lockout to avoid false positives.
+        try:
+            if not response:
+                return False
+            if "AADSTS50053" in (response.text or ""):
+                return True
+            for value in response.headers.values():
+                if "AADSTS50053" in str(value):
+                    return True
+        except Exception:
+            return False
+        return False
+
+    def _should_abort(self) -> bool:
+        """Check if spraying should abort due to lockout threshold."""
+        # Updated: provide a single abort check for modules.
+        return self.exit or self.lockout >= self.locked_limit
 
     def _log_spray_result(
         self,
@@ -214,7 +261,7 @@ class SprayerBase(BaseHandler):
         if code and code != "AADSTS50126":
             # Handle lockout tracking
             if code == "AADSTS50053":
-                self.lockout += 1
+                self._record_lockout(reason="AADSTS50053")
 
             # These error codes occur via oAuth2 only after a valid
             # authentication has been processed
@@ -297,6 +344,9 @@ class SprayerBase(BaseHandler):
         domain = domain or self.domain
         if not domain:
             raise ValueError(f"Invalid domain for password spraying: '{domain}'")
+        # Updated: stop early if lockout threshold already reached.
+        if self._should_abort():
+            return
 
         if isinstance(password, list):
             # Since we assume this is our --paired handling, we will also

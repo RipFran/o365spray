@@ -45,6 +45,8 @@ class EnumeratorBase(BaseHandler):
         sleep: int = 0,
         jitter: int = 0,
         proxy_url: str = None,
+        request_retries: int = 1,
+        request_retry_backoff: float = 0.5,
         *args,
         **kwargs,
     ):
@@ -69,6 +71,8 @@ class EnumeratorBase(BaseHandler):
             sleep: throttle http requests
             jitter: randomize throttle
             proxy_url: fireprox api url
+            request_retries: number of retries for transient request errors
+            request_retry_backoff: initial backoff in seconds for retries
 
         Raises:
             ValueError: if no output directory provided when output writing
@@ -97,6 +101,9 @@ class EnumeratorBase(BaseHandler):
         self.proxy_url = proxy_url
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
         self.poolsize = poolsize
+        # Updated: configure retries for transient request failures.
+        self.request_retries = max(0, int(request_retries))
+        self.request_retry_backoff = float(request_retry_backoff)
 
         # Internal exit handler
         self.exit = False
