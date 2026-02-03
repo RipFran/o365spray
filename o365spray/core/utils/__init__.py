@@ -13,4 +13,5 @@ from o365spray.core.utils.logger import (
 )  # Updated: expose raw CLI log handlers.
 from o365spray.core.utils.request_logger import RequestLogger  # Updated: expose request logger.
 from o365spray.core.utils.request_logger import RequestLogger
+from o365spray.core.utils.telegram import TelegramNotifier
 from o365spray.core.utils.writer import ThreadWriter

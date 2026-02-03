@@ -115,6 +115,8 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
         useragents=args.useragents,
         # Updated: pass retry configuration to spray modules.
         request_retries=args.retries,
+        telegram_token=args.telegram_token,
+        telegram_chat_id=args.telegram_chat_id,
     )
 
     def spray_signal_handler(signal, frame):

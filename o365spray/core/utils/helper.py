@@ -318,6 +318,9 @@ class Helper:
                     or arg == "safe"
                 ) and not args.spray:
                     continue
+                # 4) Don't show notification settings if spray is disabled
+                if arg in {"telegram_token", "telegram_chat_id"} and not args.spray:
+                    continue
 
                 value = _args[arg]
                 space = " " * (15 - len(arg))
@@ -327,6 +330,9 @@ class Helper:
                 #    of full list of agents - include number of random agents
                 if arg == "useragents" and args.useragents:
                     value = f"random ({len(_args[arg])})"
+                # 2) Redact sensitive notification secrets in banner output.
+                if arg in {"telegram_token", "telegram_chat_id"}:
+                    value = "configured"
 
                 BANNER += "\n   > %s%s:  %s" % (arg, space, str(value))
 

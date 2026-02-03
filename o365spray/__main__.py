@@ -208,6 +208,27 @@ def parse_args() -> argparse.Namespace:
         ),
     )
 
+    # Notification configuration
+    notify_args = parser.add_argument_group(title="Notification Configuration")
+    notify_args.add_argument(
+        "--telegram-token",
+        type=str,
+        default=os.getenv("O365SPRAY_TELEGRAM_TOKEN"),
+        help=(
+            "Telegram bot token for spray notifications. "
+            "Can also be set via O365SPRAY_TELEGRAM_TOKEN."
+        ),
+    )
+    notify_args.add_argument(
+        "--telegram-chat-id",
+        type=str,
+        default=os.getenv("O365SPRAY_TELEGRAM_CHAT_ID"),
+        help=(
+            "Telegram chat ID or @channel for spray notifications. "
+            "Can also be set via O365SPRAY_TELEGRAM_CHAT_ID."
+        ),
+    )
+
     debug_args = parser.add_argument_group(title="Debug")
     debug_args.add_argument(
         "-v", "--version", action="store_true", help="Print the tool version."
@@ -273,6 +294,15 @@ def parse_args() -> argparse.Namespace:
     if args.spray and args.passfile:
         if not Path(args.passfile).is_file():
             parser.error("invalid password file provided")
+
+    if args.spray and (
+        (args.telegram_token and not args.telegram_chat_id)
+        or (args.telegram_chat_id and not args.telegram_token)
+    ):
+        parser.error(
+            "Both --telegram-token and --telegram-chat-id are required to enable "
+            "Telegram notifications."
+        )
 
     return args
 

