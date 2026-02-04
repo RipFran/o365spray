@@ -4,8 +4,10 @@ import asyncio
 import concurrent.futures
 import concurrent.futures.thread
 import logging
+import threading
 import urllib3  # type: ignore
 from functools import partial
+from pathlib import Path
 from typing import (
     Dict,
     List,
@@ -47,6 +49,7 @@ class EnumeratorBase(BaseHandler):
         proxy_url: str = None,
         request_retries: int = 1,
         request_retry_backoff: float = 0.5,
+        resume_file: str = None,
         *args,
         **kwargs,
     ):
@@ -99,11 +102,15 @@ class EnumeratorBase(BaseHandler):
         self.sleep = sleep
         self.jitter = jitter
         self.proxy_url = proxy_url
+        self.resume_file = resume_file
+        self._resume_lock = threading.Lock()
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=workers)
         self.poolsize = poolsize
         # Updated: configure retries for transient request failures.
         self.request_retries = max(0, int(request_retries))
         self.request_retry_backoff = float(request_retry_backoff)
+        if self.resume_file:
+            Path(self.resume_file).parent.mkdir(parents=True, exist_ok=True)
 
         # Internal exit handler
         self.exit = False
@@ -161,6 +168,8 @@ class EnumeratorBase(BaseHandler):
                 msg += f"\n[ * ] Raw CLI output can be found at: '{self.raw_log_file}'"
             if self.request_logger:
                 msg += f"\n[ * ] HTTP request logs directory: '{self.request_logger.log_dir}'"
+            if self.resume_file:
+                msg += f"\n[ * ] Resume checkpoint file: '{self.resume_file}'"
 
         print(Defaults.ERASE_LINE, end="\r")
         logging.info(msg)
@@ -235,13 +244,36 @@ class EnumeratorBase(BaseHandler):
         futures = {}
         for user in userlist:
             future = self.executor.submit(
-                self._enumerate, domain=domain, user=user, password=password
+                self._enumerate_with_checkpoint,
+                domain=domain,
+                user=user,
+                password=password,
             )
 
             futures[future] = 1
             self._consume_futures(futures, self.poolsize)
 
         self._consume_futures(futures, 0)
+
+    def _enumerate_with_checkpoint(self, domain: str, user: str, password: str):
+        """Track progress for resume support and execute enumeration."""
+        self._write_resume_checkpoint(user)
+        self._enumerate(domain=domain, user=user, password=password)
+
+    def _write_resume_checkpoint(self, user: str):
+        """Persist the most recent user to a resume checkpoint file."""
+        if not self.resume_file:
+            return
+        try:
+            with self._resume_lock:
+                with open(self.resume_file, "w", encoding="utf-8") as f:
+                    f.write(f"{user}\n")
+        except Exception as exc:
+            logging.debug(
+                "Unable to write enum resume checkpoint '%s': %s",
+                self.resume_file,
+                exc,
+            )
 
     def _enumerate(self, domain: str, user: str, password: str = "Password1"):
         """Parent implementation of module child method"""

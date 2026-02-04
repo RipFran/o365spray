@@ -8,6 +8,7 @@
 > - **Richer CLI telemetry:** standardized, concise, and actionable status messages (module, HTTP status, reasons, and details).  
 > - **Request retry on transient failures:** one automatic retry for network disconnects/timeouts with backoff to reduce lost attempts (configurable via `--retries`).  
 > - **Telegram spray notifications:** optional bot alerts when valid credentials are found during password spraying (configure via `--telegram-token` / `--telegram-chat-id`).  
+> - **Resume checkpoints:** real-time username checkpoint files for enum/spray, with optional resume via `--resume`.  
 
 o365spray is a username enumeration and password spraying tool aimed at Microsoft Office 365 (O365). This tool reimplements a collection of enumeration and spray techniques researched and identified by those mentioned in [Acknowledgments](#Acknowledgments).
 
@@ -45,6 +46,12 @@ Perform username enumeration against a given domain:<br>
 
 Perform password spraying against a given domain:<br>
 `o365spray --spray -U usernames.txt -P passwords.txt --count 2 --lockout 5 --domain test.com`
+
+Resume an interrupted run from a checkpoint file:<br>
+`o365spray --enum -U usernames.txt --domain test.com --resume .\test\enum\enum_resume_state.txt`
+
+By default, checkpoints are written to `enum/enum_resume_state.txt` and `spray/spray_resume_state.txt` under the selected `--output` directory.
+If `--enum` and `--spray` are combined with a custom `--resume` path, o365spray stores per-action files using `.enum` and `.spray` suffixes.
 
 ```
 usage: o365spray [flags]
@@ -146,6 +153,10 @@ HTTP Configuration:
 Output Configuration:
   --output OUTPUT       Output directory for results and test case files.
                         Default: current directory
+
+  --resume RESUME       Checkpoint file used to resume enum/spray from the
+                        last processed username. If omitted, a default
+                        action-specific file is used.
 
 Notification Configuration:
   --telegram-token TELEGRAM_TOKEN

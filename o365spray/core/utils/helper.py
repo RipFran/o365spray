@@ -19,6 +19,8 @@ from typing import (
     Any,
     Dict,
     List,
+    Optional,
+    Tuple,
     Union,
 )
 
@@ -162,6 +164,47 @@ class Helper:
         with open(file_, "r") as f:
             list_ = [line.strip() for line in f if line.strip() not in [None, ""]]
         return list_
+
+    @classmethod
+    def get_last_nonempty_line_from_file(
+        cls,
+        file_: str,
+    ) -> Optional[str]:
+        """Read and return the last non-empty line from a file.
+
+        Arguments:
+            file_: file to read from
+
+        Returns:
+            last non-empty line, otherwise None
+        """
+        last_line = None
+        with open(file_, "r", encoding="utf-8") as f:
+            for line in f:
+                value = line.strip()
+                if value:
+                    last_line = value
+        return last_line
+
+    @classmethod
+    def trim_list_to_resume_value(
+        cls,
+        list_: List[Any],
+        value: Any,
+    ) -> Tuple[List[Any], int, bool]:
+        """Trim a list so execution starts at a given value.
+
+        Arguments:
+            list_: full list to trim
+            value: value to find and trim from
+
+        Returns:
+            tuple: (trimmed list, skipped count, found flag)
+        """
+        for index, item in enumerate(list_):
+            if item == value:
+                return (list_[index:], index, True)
+        return (list_, 0, False)
 
     @classmethod
     def get_max_dict_elem(

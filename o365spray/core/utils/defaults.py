@@ -27,6 +27,8 @@ class DefaultFiles:
 
     # Misc. files
     ENUM_IDP = f"enum_found_idp_accounts.{F_TIME}.txt"
+    ENUM_RESUME = "enum_resume_state.txt"
+    SPRAY_RESUME = "spray_resume_state.txt"
     # Updated: dedicated HTTP request log directory.
     HTTP_LOG_DIR = "http_logs"
 

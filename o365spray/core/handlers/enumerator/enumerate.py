@@ -55,6 +55,43 @@ def enumerate(args: argparse.Namespace, output_dir: str) -> object:
     if args.userfile:
         userlist += Helper.get_list_from_file(args.userfile)
 
+    if args.resume and args.spray:
+        resume_file = f"{args.resume}.enum"
+    else:
+        resume_file = args.resume or f"{output_directory}{DefaultFiles.ENUM_RESUME}"
+    logging.info(f"Enumeration checkpoint file: '{resume_file}'")
+
+    if args.resume and Path(resume_file).is_file():
+        resume_user = Helper.get_last_nonempty_line_from_file(resume_file)
+        if resume_user:
+            original_count = len(userlist)
+            userlist, skipped, found = Helper.trim_list_to_resume_value(
+                userlist,
+                resume_user,
+            )
+            if found:
+                logging.info(
+                    "Resuming enumeration from '%s' (skipped %d users).",
+                    resume_user,
+                    skipped,
+                )
+            else:
+                logging.warning(
+                    "Resume user '%s' was not found in the provided user list. "
+                    "Starting from the beginning.",
+                    resume_user,
+                )
+            logging.debug(
+                "Enumeration resume scope: %d/%d users remaining.",
+                len(userlist),
+                original_count,
+            )
+    elif args.resume:
+        logging.warning(
+            "Resume checkpoint '%s' was not found. Starting from the beginning.",
+            resume_file,
+        )
+
     logging.info(f"Running user enumeration against {len(userlist)} potential users")
 
     # Attempt to import the defined module
@@ -81,6 +118,7 @@ def enumerate(args: argparse.Namespace, output_dir: str) -> object:
         useragents=args.useragents,
         # Updated: pass retry configuration to enumeration modules.
         request_retries=args.retries,
+        resume_file=resume_file,
     )
 
     def enum_signal_handler(signal, frame):

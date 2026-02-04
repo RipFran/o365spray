@@ -52,9 +52,46 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
     if args.passfile:
         passlist += Helper.get_list_from_file(args.passfile)
 
+    if args.resume and args.enum:
+        resume_file = f"{args.resume}.spray"
+    else:
+        resume_file = args.resume or f"{output_directory}{DefaultFiles.SPRAY_RESUME}"
+    logging.info(f"Spray checkpoint file: '{resume_file}'")
+    resume_user = None
+    if args.resume and Path(resume_file).is_file():
+        resume_user = Helper.get_last_nonempty_line_from_file(resume_file)
+    elif args.resume:
+        logging.warning(
+            "Resume checkpoint '%s' was not found. Starting from the beginning.",
+            resume_file,
+        )
+
     # Use validated users if enumeration was run
     if args.enum:
         userlist = enum.VALID_ACCOUNTS
+        if resume_user:
+            original_count = len(userlist)
+            userlist, skipped, found = Helper.trim_list_to_resume_value(
+                userlist,
+                resume_user,
+            )
+            if found:
+                logging.info(
+                    "Resuming spray from '%s' (skipped %d users).",
+                    resume_user,
+                    skipped,
+                )
+            else:
+                logging.warning(
+                    "Resume user '%s' was not found in the validated account list. "
+                    "Starting from the beginning.",
+                    resume_user,
+                )
+            logging.debug(
+                "Spray resume scope: %d/%d users remaining.",
+                len(userlist),
+                original_count,
+            )
         # Sleep before spraying when enumeration that uses authentication
         # was used
         if args.enum_module in ["activesync", "oauth2"]:
@@ -68,6 +105,25 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
     # Handle username:password files
     elif args.paired:
         paired_dict = Helper.get_paired_dict_from_file(args.paired)
+        if resume_user:
+            ordered_users = list(paired_dict.keys())
+            resumed_users, skipped, found = Helper.trim_list_to_resume_value(
+                ordered_users,
+                resume_user,
+            )
+            if found:
+                logging.info(
+                    "Resuming paired spray from '%s' (skipped %d users).",
+                    resume_user,
+                    skipped,
+                )
+                paired_dict = {user: paired_dict[user] for user in resumed_users}
+            else:
+                logging.warning(
+                    "Resume user '%s' was not found in the paired user list. "
+                    "Starting from the beginning.",
+                    resume_user,
+                )
         paired_max_pass = Helper.get_max_dict_elem(paired_dict)
         # Set this to the paired usernames, this will be reset when
         # paired spraying runs
@@ -80,6 +136,30 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
             userlist += args.username.split(",")
         if args.userfile:
             userlist += Helper.get_list_from_file(args.userfile)
+
+        if resume_user:
+            original_count = len(userlist)
+            userlist, skipped, found = Helper.trim_list_to_resume_value(
+                userlist,
+                resume_user,
+            )
+            if found:
+                logging.info(
+                    "Resuming spray from '%s' (skipped %d users).",
+                    resume_user,
+                    skipped,
+                )
+            else:
+                logging.warning(
+                    "Resume user '%s' was not found in the provided user list. "
+                    "Starting from the beginning.",
+                    resume_user,
+                )
+            logging.debug(
+                "Spray resume scope: %d/%d users remaining.",
+                len(userlist),
+                original_count,
+            )
 
     # Validate we have a scope of users to spray
     if len(userlist) < 1:
@@ -115,6 +195,7 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
         useragents=args.useragents,
         # Updated: pass retry configuration to spray modules.
         request_retries=args.retries,
+        resume_file=resume_file,
         telegram_token=args.telegram_token,
         telegram_chat_id=args.telegram_chat_id,
     )

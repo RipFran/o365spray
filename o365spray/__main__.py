@@ -207,6 +207,14 @@ def parse_args() -> argparse.Namespace:
             "Default: current directory"
         ),
     )
+    output_args.add_argument(
+        "--resume",
+        type=str,
+        help=(
+            "Checkpoint file used to resume enum/spray from the last processed "
+            "username. If omitted, a default action-specific file is used."
+        ),
+    )
 
     # Notification configuration
     notify_args = parser.add_argument_group(title="Notification Configuration")
@@ -303,6 +311,13 @@ def parse_args() -> argparse.Namespace:
             "Both --telegram-token and --telegram-chat-id are required to enable "
             "Telegram notifications."
         )
+
+    if args.resume:
+        resume_path = Path(args.resume)
+        if resume_path.exists() and resume_path.is_dir():
+            parser.error("invalid resume checkpoint file provided")
+        if not (args.enum or args.spray):
+            parser.error("--resume can only be used with --enum and/or --spray.")
 
     return args
 
