@@ -2,7 +2,7 @@
 
 import logging
 import time
-from urllib.parse import quote
+from urllib.parse import quote, urljoin, urlparse
 
 from o365spray.core.handlers.sprayer.modules.base import SprayerBase
 from o365spray.core.utils import (
@@ -91,20 +91,60 @@ class SprayModule_adfs(SprayerBase):
             status = response.status_code
 
             if status == 302:
-                if self.writer:
-                    self.valid_writer.write(tested)
-                self.VALID_CREDENTIALS.append(tested)
-                # Updated: richer CLI output for valid responses.
-                self._log_spray_result(
-                    "VALID",
-                    email,
-                    password,
-                    status=status,
-                    reason=response.reason,
-                    detail="ADFS redirect (valid)",
-                )
-                # Remove valid user from being sprayed again
-                self.userlist.remove(user)
+                redirect_loc = response.headers.get("Location")
+                is_expected_redirect = False
+                try:
+                    def _is_same_or_subdomain(host: str, base: str) -> bool:
+                        host = (host or "").lower().strip(".")
+                        base = (base or "").lower().strip(".")
+                        return bool(host and base and (host == base or host.endswith("." + base)))
+
+                    # Treat 302 as valid only when the redirect stays on the expected
+                    # ADFS host. This avoids false positives caused by captive portals,
+                    # transparent proxies, or other middleboxes issuing external 302s.
+                    req_host = (urlparse(url).hostname or "").lower().strip(".")
+                    abs_loc = urljoin(url, redirect_loc) if redirect_loc else ""
+                    parsed_loc = urlparse(abs_loc)
+                    loc_host = (parsed_loc.hostname or "").lower().strip(".")
+                    loc_path = (parsed_loc.path or "").lower()
+
+                    if req_host and loc_host and loc_host == req_host:
+                        is_expected_redirect = True
+                    # Allow redirects to alternate ADFS hosts within the target domain
+                    # as long as they remain on an ADFS path.
+                    elif loc_host and domain and _is_same_or_subdomain(loc_host, domain) and loc_path.startswith(
+                        "/adfs/"
+                    ):
+                        is_expected_redirect = True
+                except Exception:
+                    is_expected_redirect = False
+
+                if is_expected_redirect:
+                    if self.writer:
+                        self.valid_writer.write(tested)
+                    self.VALID_CREDENTIALS.append(tested)
+                    # Updated: richer CLI output for valid responses.
+                    self._log_spray_result(
+                        "VALID",
+                        email,
+                        password,
+                        status=status,
+                        reason=response.reason,
+                        detail="ADFS redirect (valid)",
+                    )
+                    # Remove valid user from being sprayed again
+                    self.userlist.remove(user)
+                else:
+                    resp_len = len(response.content)
+                    detail = f"len={resp_len} unexpected_redirect={redirect_loc or 'N/A'} (ignored)"
+                    self._log_spray_result(
+                        "WARNING",
+                        email,
+                        password,
+                        status=status,
+                        reason=response.reason,
+                        detail=detail,
+                    )
 
             else:
                 resp_len = len(response.content)
