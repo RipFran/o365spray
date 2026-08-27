@@ -18,7 +18,7 @@ from o365spray.core.utils import (
 
 
 def enumerate(args: argparse.Namespace, output_dir: str) -> object:
-    """Run user enumeration against a given domain.
+    """Run user enumeration using the domain carried by each address.
 
     Arguments:
         args: namespace containing command line arguments
@@ -54,6 +54,7 @@ def enumerate(args: argparse.Namespace, output_dir: str) -> object:
         userlist += args.username.split(",")
     if args.userfile:
         userlist += Helper.get_list_from_file(args.userfile)
+    userlist = Helper.normalize_email_list(userlist)
 
     if args.resume and args.spray:
         resume_file = f"{args.resume}.enum"
@@ -143,7 +144,6 @@ def enumerate(args: argparse.Namespace, output_dir: str) -> object:
             enum.run(
                 userlist,
                 password=password,
-                domain=args.domain,
             )
         )
 

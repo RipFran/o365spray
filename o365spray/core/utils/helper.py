@@ -230,27 +230,39 @@ class Helper:
     def get_paired_dict_from_file(
         cls,
         file_: str,
-    ) -> List[Any]:
-        """Read the paired username:password combinations from a
+    ) -> Dict[str, List[str]]:
+        """Read paired email:password combinations from a
         file into an organized dict object.
 
         Arguments:
             file_: file to read into a list
 
         Returns:
-            dict of {username: [passwords]}
+            dict of {email: [passwords]}
         """
-        with open(file_, "r") as f:
-            list_ = [line.strip() for line in f if line.strip() not in [None, ""]]
+        with open(file_, "r", encoding="utf-8-sig") as f:
+            list_ = [
+                (line_number, line.strip())
+                for line_number, line in enumerate(f, start=1)
+                if line.strip()
+            ]
         dict_ = {}
-        for line in list_:
-            try:
-                (username, password) = line.split(":", 1)
-                if username not in dict_.keys():
-                    dict_[username] = []
-                dict_[username].append(password)
-            except:
-                pass
+        for line_number, line in list_:
+            if ":" not in line:
+                raise ValueError(
+                    f"Invalid paired credential on line {line_number}: "
+                    "expected email:password."
+                )
+            username, password = line.split(":", 1)
+            email = cls.normalize_email(username)
+            if not password:
+                raise ValueError(
+                    f"Invalid paired credential on line {line_number}: "
+                    "password is empty."
+                )
+            if email not in dict_:
+                dict_[email] = []
+            dict_[email].append(password)
         return dict_
 
     @classmethod
@@ -290,23 +302,97 @@ class Helper:
         sys.stdout.write("\n\n")
 
     @classmethod
-    def check_email(cls, user: str, domain: str) -> str:
-        """Check if the given username is an email. If not, convert
-        to an email address with the given doamin.
+    def normalize_email(cls, user: str) -> str:
+        """Validate and normalize a complete email-style user principal name.
 
         Arguments:
-            user: username to check for email format
-            domain: domain to convert username to email format
+            user: complete user principal name in ``local@domain`` format
 
         Returns:
-            email address
+            address with its domain normalized to lowercase IDNA form
+
+        Raises:
+            ValueError: if the value is not a complete, usable email address
         """
-        if "@" in user:
-            if domain != user.split("@")[-1]:
-                user = "%s@%s" % (user.split("@")[0], domain)
-        else:
-            user = "%s@%s" % (user, domain)
-        return user
+        if not isinstance(user, str):
+            raise ValueError("Email address must be a string.")
+
+        value = user.strip()
+        if value.count("@") != 1:
+            raise ValueError(
+                f"Invalid email address '{user}': expected exactly one '@'."
+            )
+
+        local_part, raw_domain = value.rsplit("@", 1)
+        if (
+            not local_part
+            or len(local_part) > 64
+            or local_part.startswith(".")
+            or local_part.endswith(".")
+            or ".." in local_part
+            or any(
+                character.isspace() or ord(character) < 32
+                for character in local_part
+            )
+        ):
+            raise ValueError(f"Invalid email address '{user}': invalid local part.")
+
+        try:
+            domain = raw_domain.rstrip(".").encode("idna").decode("ascii").lower()
+        except UnicodeError as exc:
+            raise ValueError(
+                f"Invalid email address '{user}': invalid domain."
+            ) from exc
+
+        if not domain or len(domain) > 253 or "." not in domain:
+            raise ValueError(f"Invalid email address '{user}': invalid domain.")
+
+        labels = domain.split(".")
+        if any(
+            not label
+            or len(label) > 63
+            or label.startswith("-")
+            or label.endswith("-")
+            or not all(character.isalnum() or character == "-" for character in label)
+            for label in labels
+        ):
+            raise ValueError(f"Invalid email address '{user}': invalid domain.")
+
+        email = f"{local_part}@{domain}"
+        if len(email) > 254:
+            raise ValueError(f"Invalid email address '{user}': address is too long.")
+        return email
+
+    @classmethod
+    def get_email_domain(cls, user: str) -> str:
+        """Return the normalized domain associated with an email address."""
+        return cls.normalize_email(user).rsplit("@", 1)[1]
+
+    @classmethod
+    def normalize_email_list(cls, users: List[str]) -> List[str]:
+        """Validate a collection of addresses while preserving its order."""
+        normalized = []
+        for index, user in enumerate(users, start=1):
+            try:
+                normalized.append(cls.normalize_email(user))
+            except ValueError as exc:
+                raise ValueError(f"Invalid user entry #{index}: {exc}") from exc
+        return normalized
+
+    @classmethod
+    def check_email(cls, user: str, domain: str = None) -> str:
+        """Validate an email without ever replacing its supplied domain.
+
+        ``domain`` remains as an internal consistency check for module code. It
+        must be the domain derived from ``user`` by the execution layer.
+        """
+        email = cls.normalize_email(user)
+        email_domain = email.rsplit("@", 1)[1]
+        if domain and email_domain != domain.lower().rstrip("."):
+            raise ValueError(
+                f"Email domain mismatch for '{email}': expected '{domain}'."
+            )
+        return email
 
     @classmethod
     def prompt_question(cls, prompt: str) -> str:
@@ -340,6 +426,8 @@ class Helper:
 
         _args = vars(args)
         for arg in _args:
+            if arg.startswith("_") or arg == "adfs_urls":
+                continue
             if _args[arg]:
 
                 # Handle conditions to not show certain data

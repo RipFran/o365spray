@@ -38,7 +38,6 @@ class SprayerBase(BaseHandler):
     def __init__(
         self,
         loop: Defaults.EventLoop,
-        domain: str = None,
         userlist: List[str] = None,
         output_dir: str = None,
         timeout: int = 25,
@@ -46,6 +45,7 @@ class SprayerBase(BaseHandler):
         workers: int = 5,
         lock_threshold: int = 5,
         adfs_url: str = None,
+        adfs_urls: Dict[str, str] = None,
         writer: bool = True,
         sleep: int = 0,
         jitter: int = 0,
@@ -70,7 +70,6 @@ class SprayerBase(BaseHandler):
             <required>
             loop: asyncio event loop
             <optional>
-            domain: domain to spray users against
             userlist: list of users to spray
             output_dir: directory to write results to
             timeout: http request timeout
@@ -78,6 +77,7 @@ class SprayerBase(BaseHandler):
             workers: thread pool worker rate
             lock_threshold: locked account threashold
             adfs_url: ADFS AuthURL
+            adfs_urls: mapping of email domains to their discovered ADFS AuthURL
             writer: toggle writing to output files
             sleep: throttle http requests
             jitter: randomize throttle
@@ -103,7 +103,6 @@ class SprayerBase(BaseHandler):
 
         self.loop = loop
         self.userlist = userlist
-        self.domain = domain
         # Updated: store output directory for downstream logging/reporting.
         self.output_dir = output_dir
         # Updated: store raw CLI log file path for shutdown summaries.
@@ -112,6 +111,7 @@ class SprayerBase(BaseHandler):
         self.proxies = proxy
         self.locked_limit = lock_threshold
         self.adfs_url = adfs_url
+        self.adfs_urls = adfs_urls or {}
         self.sleep = sleep
         self.jitter = jitter
         self.proxy_url = proxy_url
@@ -245,7 +245,7 @@ class SprayerBase(BaseHandler):
 
         message_lines = [
             "o365spray: VALID credential found",
-            f"Domain: {self.domain}",
+            f"Domain: {self.HELPER.get_email_domain(email)}",
             f"Module: {self.module_tag}",
             f"User: {email}",
             f"Password: {password}",
@@ -378,7 +378,6 @@ class SprayerBase(BaseHandler):
     async def run(
         self,
         password: Union[str, List[str]],
-        domain: str = None,
         userlist: List[str] = None,
     ):
         """Asyncronously Send HTTP Requests to password spray a list of users.
@@ -390,7 +389,6 @@ class SprayerBase(BaseHandler):
               should be run as paired
             <optional>
             module: spray module to run
-            domain: domain to spray users against
             userlist: list of users to spray
         """
         # Re-initialize the class userlist each run if a user provides
@@ -398,14 +396,13 @@ class SprayerBase(BaseHandler):
         self.userlist = userlist or self.userlist
         if not self.userlist:
             raise ValueError("No user list provided for spraying.")
-        if not isinstance(self.userlist, list):
+        if not isinstance(self.userlist, (list, tuple)):
             raise ValueError(
-                f"Provided user list is not a list -> provided: {type(self.userlist)}"
+                "Provided user list is not a list or tuple -> "
+                f"provided: {type(self.userlist)}"
             )
+        self.userlist = self.HELPER.normalize_email_list(list(self.userlist))
 
-        domain = domain or self.domain
-        if not domain:
-            raise ValueError(f"Invalid domain for password spraying: '{domain}'")
         # Updated: stop early if lockout threshold already reached.
         if self._should_abort():
             return
@@ -420,18 +417,20 @@ class SprayerBase(BaseHandler):
             # and that a single string/int/value was passed
             creds = zip(self.userlist, cycle([password]))
 
-        blocking_tasks = [
-            self.loop.run_in_executor(
-                self.executor,
-                partial(
-                    self._spray_with_checkpoint,
-                    domain=domain,
-                    user=user,
-                    password=passwd,
-                ),
+        blocking_tasks = []
+        for user, passwd in creds:
+            email = self.HELPER.normalize_email(user)
+            blocking_tasks.append(
+                self.loop.run_in_executor(
+                    self.executor,
+                    partial(
+                        self._spray_with_checkpoint,
+                        domain=self.HELPER.get_email_domain(email),
+                        user=email,
+                        password=passwd,
+                    ),
+                )
             )
-            for user, passwd in creds
-        ]
 
         if blocking_tasks:
             await asyncio.wait(blocking_tasks)

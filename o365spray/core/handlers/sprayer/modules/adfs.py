@@ -50,9 +50,15 @@ class SprayModule_adfs(SprayerBase):
 
             time.sleep(0.250)
 
+            # Select the ADFS endpoint discovered for this email's domain. A
+            # manually supplied URL remains a fallback for explicit workflows.
+            adfs_url = self.adfs_urls.get(domain) or self.adfs_url
+            if not adfs_url:
+                raise ValueError(f"No ADFS AuthURL is available for domain '{domain}'.")
+
             # Fix the ADFS URL for each user since the AuthUrl was pulled during
             # validation using a bogus user
-            url, url_params = self.adfs_url.split("?", 1)
+            url, url_params = adfs_url.split("?", 1)
             url_params = url_params.split("&")
             for i in range(len(url_params)):
                 if "username=" in url_params[i]:

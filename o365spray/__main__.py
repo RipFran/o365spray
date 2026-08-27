@@ -26,17 +26,6 @@ def parse_args() -> argparse.Namespace:
         )
     )
 
-    target_args = parser.add_argument_group(title="Target")
-    target_args.add_argument(
-        "-d",
-        "--domain",
-        type=str,
-        help=(
-            "Target domain for validation, user enumeration, "
-            "and/or password spraying."
-        ),
-    )
-
     # Type of action(s) to run
     action_args = parser.add_argument_group(title="Actions")
     action_args.add_argument(
@@ -52,13 +41,16 @@ def parse_args() -> argparse.Namespace:
     # Username(s)/Password(s) for enum/spray
     credential_args = parser.add_argument_group(title="Credentials")
     credential_args.add_argument(
-        "-u", "--username", type=str, help="Username(s) delimited using commas."
+        "-u",
+        "--username",
+        type=str,
+        help="Complete email address(es) delimited using commas.",
     )
     credential_args.add_argument(
         "-p", "--password", type=str, help="Password(s) delimited using commas."
     )
     credential_args.add_argument(
-        "-U", "--userfile", type=str, help="File containing list of usernames."
+        "-U", "--userfile", type=str, help="File containing complete email addresses."
     )
     credential_args.add_argument(
         "-P", "--passfile", type=str, help="File containing list of passwords."
@@ -66,7 +58,7 @@ def parse_args() -> argparse.Namespace:
     credential_args.add_argument(
         "--paired",
         type=str,
-        help="File containing list of credentials in username:password format.",
+        help="File containing credentials in email:password format.",
     )
 
     # Password spraying lockout policy
@@ -95,7 +87,7 @@ def parse_args() -> argparse.Namespace:
         "--validate-module",
         type=str.lower,
         default="getuserrealm",
-        help="Specify which valiadtion module to run. Default: getuserrealm",
+        help="Specify which validation module to run. Default: getuserrealm",
     )
     module_args.add_argument(
         "--enum-module",
@@ -112,7 +104,10 @@ def parse_args() -> argparse.Namespace:
     module_args.add_argument(
         "--adfs-url",
         type=str,
-        help="AuthURL of the target domain's ADFS login page for password spraying.",
+        help=(
+            "ADFS AuthURL override. Without this option, endpoints are discovered "
+            "independently for each email domain."
+        ),
     )
 
     # General scan specifications
@@ -257,9 +252,14 @@ def parse_args() -> argparse.Namespace:
     # If not getting the tool version and flags have been provided, ensure
     # all required flags and valid flag combinations are present
 
-    # Ensure a domain has been provided
-    if not args.domain:
-        parser.error("-d/--domain is required.")
+    if not (args.validate or args.enum or args.spray):
+        parser.error("At least one action is required: --validate, --enum, or --spray.")
+
+    if args.validate and not (args.username or args.userfile or args.paired):
+        parser.error(
+            "-u/--username, -U/--userfile, or --paired is required for "
+            "domain validation. Domains are derived from email addresses."
+        )
 
     # If running user enumeration, make sure we have a username or username file
     if args.enum and (not args.username and not args.userfile):
@@ -299,6 +299,9 @@ def parse_args() -> argparse.Namespace:
         if not Path(args.userfile).is_file():
             parser.error("invalid username file provided")
 
+    if args.paired and not Path(args.paired).is_file():
+        parser.error("invalid paired credential file provided")
+
     if args.spray and args.passfile:
         if not Path(args.passfile).is_file():
             parser.error("invalid password file provided")
@@ -318,6 +321,26 @@ def parse_args() -> argparse.Namespace:
             parser.error("invalid resume checkpoint file provided")
         if not (args.enum or args.spray):
             parser.error("--resume can only be used with --enum and/or --spray.")
+
+    # Enforce the email-only input contract before any network activity. The
+    # normalized domain set is used for per-domain validation and routing.
+    try:
+        users = []
+        if args.username:
+            users += args.username.split(",")
+        if args.userfile:
+            users += Helper.get_list_from_file(args.userfile)
+        if args.paired:
+            users += list(Helper.get_paired_dict_from_file(args.paired).keys())
+        normalized_users = Helper.normalize_email_list(users)
+    except (OSError, UnicodeError, ValueError) as exc:
+        parser.error(str(exc))
+
+    if not normalized_users:
+        parser.error("At least one complete email address is required.")
+
+    args.domains = sorted({Helper.get_email_domain(user) for user in normalized_users})
+    args.adfs_urls = {}
 
     return args
 
@@ -345,7 +368,7 @@ def main():
     else:
         output_directory = os.getcwd()
 
-    if args.adfs_url:
+    if args.adfs_url and not args.validate:
         # Skip domain validation and enforce ADFS enumeration/spraying
         # when the user provides an ADFS AuthURL
         if args.enum and args.enum_module != "oauth2":
@@ -354,6 +377,7 @@ def main():
         if args.spray and args.spray_module != "adfs":
             logging.info("Switching to ADFS module for password spraying")
             args.spray_module = "adfs"
+        args.adfs_urls = {domain: args.adfs_url for domain in args.domains}
 
     else:
         # Perform domain validation

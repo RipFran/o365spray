@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## v3.1.0 (27/08/2026)
+- Remove the `-d` / `--domain` option and require complete email addresses for all user inputs.
+- Derive and preserve each address's domain independently, including mixed-domain user and paired credential files.
+- Validate every unique supplied domain once and route domain-dependent modules per address.
+- Reject malformed user and paired credential entries before any network request.
+- Preserve complete email addresses when chaining OneDrive enumeration into password spraying.
+
 ## v3.0.4 (11/19/2023)
 - [@Macmod](https://github.com/Macmod) Update how enumeration performs concurrent requests by limiting the number of blocking tasks at any one time
 

@@ -18,7 +18,7 @@ from o365spray.core.utils import (
 
 
 def spray(args: argparse.Namespace, output_dir: str, enum: object):
-    """Run a password spray against a given domain.
+    """Run a password spray using the domain carried by each address.
 
     Arguments:
         args: namespace containing command line arguments
@@ -102,7 +102,7 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
             logging.info("Sleeping for %.1f minutes" % (args.lockout))
             Helper.lockout_reset_wait(args.lockout)
 
-    # Handle username:password files
+    # Handle email:password files
     elif args.paired:
         paired_dict = Helper.get_paired_dict_from_file(args.paired)
         if resume_user:
@@ -136,6 +136,7 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
             userlist += args.username.split(",")
         if args.userfile:
             userlist += Helper.get_list_from_file(args.userfile)
+        userlist = Helper.normalize_email_list(userlist)
 
         if resume_user:
             original_count = len(userlist)
@@ -180,7 +181,6 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
 
     spray = Sprayer(
         loop=loop,
-        domain=args.domain,
         userlist=userlist,
         output_dir=output_directory,
         timeout=args.timeout,
@@ -188,6 +188,7 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
         workers=args.rate,
         lock_threshold=args.safe,
         adfs_url=args.adfs_url,
+        adfs_urls=args.adfs_urls,
         writer=True,
         sleep=args.sleep,
         jitter=args.jitter,
@@ -264,16 +265,9 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
                 # in the spray class, we need to handle found valid creds here
                 for valid_creds in spray.VALID_CREDENTIALS:
                     valid_email, _ = valid_creds.split(":", 1)
-                    valid_user = valid_email.split("@", 1)[0]
-
-                    # If the email/user exists in the paired dict still, attempt
-                    # to remove it from further iterations
-                    if any(
-                        uname in paired_dict.keys()
-                        for uname in [valid_email, valid_user]
-                    ):
+                    # Paired usernames are always complete email addresses.
+                    if valid_email in paired_dict:
                         paired_dict.pop(valid_email, None)
-                        paired_dict.pop(valid_user, None)
                         # If we found new creds and updated our spraying dict, let's
                         # update our counter
                         paired_max_pass = Helper.get_max_dict_elem(paired_dict)

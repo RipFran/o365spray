@@ -9,6 +9,7 @@
 > - **Request retry on transient failures:** one automatic retry for network disconnects/timeouts with backoff to reduce lost attempts (configurable via `--retries`).  
 > - **Telegram spray notifications:** optional bot alerts when valid credentials are found during password spraying (configure via `--telegram-token` / `--telegram-chat-id`).  
 > - **Resume checkpoints:** real-time username checkpoint files for enum/spray, with optional resume via `--resume`.  
+> - **Per-address domain routing:** `-d` / `--domain` has been removed. Every user input must be a complete email address; its supplied domain is preserved and evaluated independently, including mixed-domain dictionaries.
 
 o365spray is a username enumeration and password spraying tool aimed at Microsoft Office 365 (O365). This tool reimplements a collection of enumeration and spray techniques researched and identified by those mentioned in [Acknowledgments](#Acknowledgments).
 
@@ -38,17 +39,19 @@ o365spray is a username enumeration and password spraying tool aimed at Microsof
   <br>
 </h2>
 
-Validate a domain is using O365:<br>
-`o365spray --validate --domain test.com`
+Validate the domain(s) associated with one or more email addresses:<br>
+`o365spray --validate -u alice@test.com,bob@example.org`
 
-Perform username enumeration against a given domain:<br>
-`o365spray --enum -U usernames.txt --domain test.com`
+Perform username enumeration (every line must be a complete email address):<br>
+`o365spray --enum -U emails.txt`
 
-Perform password spraying against a given domain:<br>
-`o365spray --spray -U usernames.txt -P passwords.txt --count 2 --lockout 5 --domain test.com`
+Perform password spraying:<br>
+`o365spray --spray -U emails.txt -P passwords.txt --count 2 --lockout 5`
 
 Resume an interrupted run from a checkpoint file:<br>
-`o365spray --enum -U usernames.txt --domain test.com --resume .\test\enum\enum_resume_state.txt`
+`o365spray --enum -U emails.txt --resume .\test\enum\enum_resume_state.txt`
+
+The `-u` / `--username`, `-U` / `--userfile`, and `--paired` inputs accept only complete email addresses. Domains are never appended or replaced. A mixed input such as `alice@test.com` and `bob@example.org` is validated and routed per address. If any derived domain fails validation, enum/spray is stopped rather than silently processing only part of the supplied scope.
 
 By default, checkpoints are written to `enum/enum_resume_state.txt` and `spray/spray_resume_state.txt` under the selected `--output` directory.
 If `--enum` and `--spray` are combined with a custom `--resume` path, o365spray stores per-action files using `.enum` and `.spray` suffixes.
@@ -56,15 +59,10 @@ If `--enum` and `--spray` are combined with a custom `--resume` path, o365spray 
 ```
 usage: o365spray [flags]
 
-o365spray | Microsoft O365 User Enumerator and Password Sprayer -- v3.0.4
+o365spray | Microsoft O365 User Enumerator and Password Sprayer -- v3.1.0
 
 options:
   -h, --help            show this help message and exit
-
-Target:
-  -d DOMAIN, --domain DOMAIN
-                        Target domain for validation, user enumeration, and/or
-                        password spraying.
 
 Actions:
   --validate            Run domain validation only.
@@ -75,19 +73,18 @@ Actions:
 
 Credentials:
   -u USERNAME, --username USERNAME
-                        Username(s) delimited using commas.
+                        Complete email address(es) delimited using commas.
 
   -p PASSWORD, --password PASSWORD
                         Password(s) delimited using commas.
 
   -U USERFILE, --userfile USERFILE
-                        File containing list of usernames.
+                        File containing complete email addresses.
 
   -P PASSFILE, --passfile PASSFILE
                         File containing list of passwords.
 
-  --paired PAIRED       File containing list of credentials in username:password
-                        format.
+  --paired PAIRED       File containing credentials in email:password format.
 
 Password Spraying Configuration:
   -c COUNT, --count COUNT
@@ -101,7 +98,7 @@ Password Spraying Configuration:
 
 Module Configuration:
   --validate-module VALIDATE_MODULE
-                        Specify which valiadtion module to run.
+                        Specify which validation module to run.
                         Default: getuserrealm
 
   --enum-module ENUM_MODULE
@@ -112,8 +109,8 @@ Module Configuration:
                         Specify which password spraying module to run.
                         Default: oauth2
 
-  --adfs-url ADFS_URL   AuthURL of the target domain's ADFS login page for password
-                        spraying.
+  --adfs-url ADFS_URL   ADFS AuthURL override. Without this option, endpoints are
+                        discovered independently for each email domain.
 
 Scan Configuration:
   --sleep [-1, 0-120]   Throttle HTTP requests every `N` seconds. This can be randomized
@@ -208,7 +205,7 @@ To use FireProx with o365spray, create a proxy URL for the given o365spray modul
 
 ### Enumeration
 
-> The 'tenant' value in the OneDrive URL is the domain name value that is provided via the `--domain` flag.
+> The OneDrive tenant and personal-site suffix are derived from each supplied email address. Mixed-domain input is routed independently.
 
 | Module       | Base URL |
 | ---          | ---      |

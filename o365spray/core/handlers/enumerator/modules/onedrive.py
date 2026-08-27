@@ -34,12 +34,11 @@ class EnumerateModule_onedrive(EnumeratorBase):
               crashing the run
         """
         try:
-            # Remove email format from user if present
-            orig_user = user
-            user = user.split("@")[0]
+            email = self.HELPER.check_email(user, domain)
+            user = email.rsplit("@", 1)[0]
 
             # Write the tested user
-            tested = f"{orig_user} -> {user}" if user != orig_user else user
+            tested = email
             if self.writer:
                 self.tested_writer.write(tested)
 
@@ -93,7 +92,7 @@ class EnumerateModule_onedrive(EnumeratorBase):
                     "module": self.module_tag,
                     "action": "enum",
                     "target": user,
-                    "username": orig_user,
+                    "username": email,
                 },
             )
 
@@ -102,12 +101,12 @@ class EnumerateModule_onedrive(EnumeratorBase):
             status = response.status_code
             if status in [302, 401, 403]:
                 if self.writer:
-                    self.valid_writer.write(user)
-                self.VALID_ACCOUNTS.append(user)
+                    self.valid_writer.write(email)
+                self.VALID_ACCOUNTS.append(email)
                 # Updated: richer CLI output for valid responses.
                 self._log_enum_result(
                     "VALID",
-                    user,
+                    email,
                     status=status,
                     reason=response.reason,
                     detail="OneDrive user indicates valid",
@@ -119,7 +118,7 @@ class EnumerateModule_onedrive(EnumeratorBase):
                 # Updated: richer CLI output for invalid responses.
                 self._log_enum_result(
                     "INVALID",
-                    user,
+                    email,
                     status=status,
                     reason=response.reason,
                     detail="OneDrive user not found",
@@ -129,6 +128,6 @@ class EnumerateModule_onedrive(EnumeratorBase):
             # Updated: surface request failures with context.
             logging.warning(
                 f"[{text_colors.WARNING}REQUEST_FAILED{text_colors.ENDC}] "
-                f"{orig_user} | module={self.module_tag} | error={type(e).__name__}: {e}"
+                f"{user} | module={self.module_tag} | error={type(e).__name__}: {e}"
             )
             pass

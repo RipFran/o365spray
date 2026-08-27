@@ -37,7 +37,6 @@ class EnumeratorBase(BaseHandler):
     def __init__(
         self,
         loop: Defaults.EventLoop,
-        domain: str = None,
         output_dir: str = None,
         timeout: int = 25,
         proxy: Union[str, Dict[str, str]] = None,
@@ -65,7 +64,6 @@ class EnumeratorBase(BaseHandler):
             <required>
             loop: asyncio event loop
             <optional>
-            domain: domain to enumerate users against
             output_dir: directory to write results to
             timeout: http request timeout
             proxy: http request proxy
@@ -92,7 +90,6 @@ class EnumeratorBase(BaseHandler):
             proxy = {"http": proxy, "https": proxy}
 
         self.loop = loop
-        self.domain = domain
         # Updated: store output directory for downstream logging/reporting.
         self.output_dir = output_dir
         # Updated: store raw CLI log file path for shutdown summaries.
@@ -222,7 +219,6 @@ class EnumeratorBase(BaseHandler):
         self,
         userlist: List[str],
         password: str = "Password1",
-        domain: str = None,
     ):
         """Asyncronously Send HTTP Requests to enumerate a list of users.
         This method's params override the class' level of params.
@@ -232,21 +228,14 @@ class EnumeratorBase(BaseHandler):
             userlist: list of users to enumerate
             <optional>
             password: password for modules that perform authentication
-            domain: domain to enumerate users against
-
-        Raises:
-            ValueError: if provided domain is empty/None
         """
-        domain = domain or self.domain
-        if not domain:
-            raise ValueError(f"Invalid domain for user enumeration: '{domain}'")
-
         futures = {}
         for user in userlist:
+            email = self.HELPER.normalize_email(user)
             future = self.executor.submit(
                 self._enumerate_with_checkpoint,
-                domain=domain,
-                user=user,
+                domain=self.HELPER.get_email_domain(email),
+                user=email,
                 password=password,
             )
 
