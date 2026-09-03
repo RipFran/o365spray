@@ -11,6 +11,7 @@ from datetime import (
     datetime,
     timedelta,
 )
+from pathlib import Path
 from random import (
     randint,
     sample,
@@ -185,6 +186,25 @@ class Helper:
                 if value:
                     last_line = value
         return last_line
+
+    @classmethod
+    def resolve_resume(
+        cls,
+        resume: Optional[str],
+        checkpoint_file: str,
+        default_file: str,
+    ) -> Tuple[str, Optional[str]]:
+        """Resolve a resume checkpoint file or a literal dictionary entry."""
+        if resume and Path(checkpoint_file).is_file():
+            return checkpoint_file, cls.get_last_nonempty_line_from_file(
+                checkpoint_file
+            )
+        if resume:
+            try:
+                return default_file, cls.normalize_email(resume)
+            except ValueError:
+                return checkpoint_file, None
+        return default_file, None
 
     @classmethod
     def trim_list_to_resume_value(

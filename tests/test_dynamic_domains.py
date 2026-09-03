@@ -106,6 +106,36 @@ class CommandLineContractTests(unittest.TestCase):
                     parse_args()
 
 
+class ResumeTests(unittest.TestCase):
+    def test_resolves_an_existing_checkpoint_file(self):
+        with tempfile.TemporaryDirectory() as directory:
+            checkpoint = Path(directory) / "resume.txt"
+            checkpoint.write_text("first@example.com\nlast@example.com\n")
+
+            self.assertEqual(
+                Helper.resolve_resume(
+                    str(checkpoint), str(checkpoint), "default-resume.txt"
+                ),
+                (str(checkpoint), "last@example.com"),
+            )
+
+    def test_resolves_a_literal_dictionary_entry(self):
+        self.assertEqual(
+            Helper.resolve_resume(
+                "last@EXAMPLE.COM", "last@EXAMPLE.COM", "default-resume.txt"
+            ),
+            ("default-resume.txt", "last@example.com"),
+        )
+
+    def test_preserves_a_new_custom_checkpoint_path(self):
+        self.assertEqual(
+            Helper.resolve_resume(
+                "custom-resume.txt", "custom-resume.txt", "default-resume.txt"
+            ),
+            ("custom-resume.txt", None),
+        )
+
+
 class PerAddressRoutingTests(unittest.TestCase):
     def setUp(self):
         self.loop = asyncio.new_event_loop()

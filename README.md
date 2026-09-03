@@ -51,6 +51,9 @@ Perform password spraying:<br>
 Resume an interrupted run from a checkpoint file:<br>
 `o365spray --enum -U emails.txt --resume .\test\enum\enum_resume_state.txt`
 
+Resume directly from an exact entry in the username dictionary:<br>
+`o365spray --enum -U emails.txt --resume alice@test.com`
+
 The `-u` / `--username`, `-U` / `--userfile`, and `--paired` inputs accept only complete email addresses. Domains are never appended or replaced. A mixed input such as `alice@test.com` and `bob@example.org` is validated and routed per address. If any derived domain fails validation, enum/spray is stopped rather than silently processing only part of the supplied scope.
 
 By default, checkpoints are written to `enum/enum_resume_state.txt` and `spray/spray_resume_state.txt` under the selected `--output` directory.
@@ -151,9 +154,9 @@ Output Configuration:
   --output OUTPUT       Output directory for results and test case files.
                         Default: current directory
 
-  --resume RESUME       Checkpoint file used to resume enum/spray from the
-                        last processed username. If omitted, a default
-                        action-specific file is used.
+  --resume RESUME       Checkpoint file or exact username used to resume
+                        enum/spray. If omitted, a default action-specific file
+                        is used.
 
 Notification Configuration:
   --telegram-token TELEGRAM_TOKEN

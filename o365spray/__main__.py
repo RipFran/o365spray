@@ -206,8 +206,8 @@ def parse_args() -> argparse.Namespace:
         "--resume",
         type=str,
         help=(
-            "Checkpoint file used to resume enum/spray from the last processed "
-            "username. If omitted, a default action-specific file is used."
+            "Checkpoint file or exact username used to resume enum/spray. "
+            "If omitted, a default action-specific file is used."
         ),
     )
 

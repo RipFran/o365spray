@@ -52,15 +52,14 @@ def spray(args: argparse.Namespace, output_dir: str, enum: object):
     if args.passfile:
         passlist += Helper.get_list_from_file(args.passfile)
 
-    if args.resume and args.enum:
-        resume_file = f"{args.resume}.spray"
-    else:
-        resume_file = args.resume or f"{output_directory}{DefaultFiles.SPRAY_RESUME}"
+    resume_path = f"{args.resume}.spray" if args.resume and args.enum else args.resume
+    resume_file, resume_user = Helper.resolve_resume(
+        args.resume,
+        resume_path,
+        f"{output_directory}{DefaultFiles.SPRAY_RESUME}",
+    )
     logging.info(f"Spray checkpoint file: '{resume_file}'")
-    resume_user = None
-    if args.resume and Path(resume_file).is_file():
-        resume_user = Helper.get_last_nonempty_line_from_file(resume_file)
-    elif args.resume:
+    if args.resume and resume_user is None and not Path(resume_file).is_file():
         logging.warning(
             "Resume checkpoint '%s' was not found. Starting from the beginning.",
             resume_file,
